@@ -27,9 +27,9 @@
 {\Large Phase I: Logical Model\par}
 \vfill
 \begin{tabular}{rl}
-\textbf{Group members:} & Ana Garcia -- ana.garcia@example.com\\
-						 & Bruno Martin -- bruno.martin@example.com\\
-						 & Clara Lopez -- clara.lopez@example.com\\[0.4cm]
+\textbf{Group members:} & Thales S. A. Camargo -- thales.camargo@alumnos.upm.es\\
+						 & Jhon Corrales Almendariz -- jhon.corrales@alumnos.upm.es\\
+						 & Joel Montes de Oca Martínez -- joel.montes@alumnos.upm.es\\[0.4cm]
 \textbf{Course:} & Explainable Artificial Intelligence\\
 \textbf{Programme:} & Master in Artificial Intelligence\\
 \textbf{Date:} & September 2026
@@ -39,7 +39,7 @@
 \end{titlepage}
 
 \begin{abstract}
-This report documents Phase I of the Tema 2 practical work in Explainable Artificial Intelligence. The accompanying notebook builds a transparent classification pipeline for predicting whether a customer will experience payment difficulty in the following month. A decision tree obtains 0.805 accuracy on a held-out validation set, but its balanced accuracy is only 0.560 and its recall for the difficult-payment class is 0.14. The main finding is therefore that accuracy alone gives an overly optimistic picture of performance: the model strongly favors the majority class and requires further validation and model comparison.
+This report documents Phase I of the Tema 2 practical work in Explainable Artificial Intelligence. The accompanying notebook builds a transparent classification pipeline for predicting whether a customer will experience payment difficulty in the following month. Across five stratified folds, a decision tree obtains 0.803 +/- 0.005 accuracy and 0.561 +/- 0.010 balanced accuracy; recall for the difficult-payment class is only 0.140 +/- 0.020. The main finding is therefore that accuracy alone gives an overly optimistic picture of performance: the model strongly favors the majority class and requires comparison with other model families.
 \end{abstract}
 
 \section{Introduction}
@@ -64,21 +64,22 @@ The implementation uses pandas for tabular data loading and manipulation, scikit
 
 Only the labeled training data are split. Seventy percent is used for fitting and thirty percent for validation, with stratification preserving the class proportions and \texttt{random\_state=411} making the result reproducible. The separate test file is never used to fit the encoder or model: its categorical values are transformed after the encoder has been fitted on the training partition, with unknown categories ignored.
 
-This is a Phase I protocol, not the final comparison protocol. The assignment asks the complete project to compare a logical model, logistic regression, and an Explainable Boosting Machine with five-fold cross-validation. This preliminary notebook fits only the logical model, so the current validation result must not be interpreted as a five-fold estimate or as evidence that a tree is the best model family.
+The notebook uses five-fold stratified cross-validation on the labeled training partition to estimate the tree's performance. Each fold fits a fresh InterpretML tree on four fifths of the training partition and evaluates it on the remaining fifth. The separate test file is not used in cross-validation. The complete project must also compare this logical model with logistic regression and an Explainable Boosting Machine using the same five-fold protocol.
 
 \section{Results}
 
-Table~\ref{tab:model-summary} follows the assignment's requested summary format. The five-fold column is marked as not applicable because Phase I uses one fixed hold-out split. The additional metrics in Table~\ref{tab:validation} make the class imbalance visible.
+Table~\ref{tab:model-summary} follows the assignment's requested summary format. The additional hold-out metrics in Table~\ref{tab:validation} are retained as a direct comparison with the original Phase I baseline, while the five-fold results are the more stable estimates used for interpretation.
 
 \begin{table}[ht]
 \centering
+\small
 \caption{Phase I model summary.}
 \label{tab:model-summary}
-\begin{tabular}{@{}lll@{}}
+\begin{tabular}{@{}p{0.23\linewidth}p{0.34\linewidth}p{0.34\linewidth}@{}}
 \toprule
 Classifier & Key settings & Five-fold CV result(s) \\
 \midrule
-ClassificationTree & InterpretML default tree; one-hot inputs & Not used in Phase I \\
+ClassificationTree & InterpretML default tree; one-hot inputs & Accuracy $0.803\pm0.005$; balanced accuracy $0.561\pm0.010$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -100,7 +101,7 @@ Validation observations & 7,500 \\
 \end{tabular}
 \end{table}
 
-The validation set contains 5,909 class-0 and 1,591 class-1 observations. The gap between class recalls explains why balanced accuracy is much lower than accuracy: the tree identifies most non-difficult cases but misses most difficult-payment cases. On the unlabeled test set, 95.9\% of predictions are class 0 and 4.1\% are class 1. These proportions are descriptive only because test labels are unavailable.
+The original hold-out validation set contains 5,909 class-0 and 1,591 class-1 observations. The gap between class recalls explains why balanced accuracy is much lower than accuracy: the tree identifies most non-difficult cases but misses most difficult-payment cases. The same pattern persists across folds: class-0 recall is 0.981 +/- 0.004, while class-1 recall is 0.140 +/- 0.020. On the unlabeled test set, 95.9\% of predictions are class 0 and 4.1\% are class 1. These proportions are descriptive only because test labels are unavailable.
 
 \section{Models}
 
@@ -118,7 +119,7 @@ Once validation is complete, the fitted tree predicts the unlabeled test set. Th
 
 \section{Limitations and future work}
 
-This phase uses a single hold-out split and one tree configuration. The reported validation metrics may therefore vary if the split changes, and they do not quantify uncertainty across samples. Future work should use five-fold cross-validation for model comparison, hyperparameter choices, feature selection, and threshold selection, as required by the assignment. It should fit logistic regression and an Explainable Boosting Machine in addition to the tree, and report class-specific error costs if false negatives and false positives are unequal.
+This phase now uses five-fold cross-validation for the tree, but it still evaluates only one tree configuration and one model family. The cross-validation standard deviations quantify variation across the five folds, but they are not a substitute for comparing alternative algorithms or configurations. Future work should use the same five-fold protocol for model comparison, hyperparameter choices, feature selection, and threshold selection, as required by the assignment. It should fit logistic regression and an Explainable Boosting Machine in addition to the tree, and report class-specific error costs if false negatives and false positives are unequal.
 
 The notebook already preserves sex as an audit attribute, but it does not yet calculate group-wise performance or fairness measures. A subsequent phase should compare error rates across relevant groups, inspect feature-importance stability, and use local explanations for the same representative instances across all three model families, including at least one instance from each class. Any such analysis should be performed without using the test labels.
 
@@ -130,7 +131,7 @@ Interpretability also has a cost. A fully expanded tree can become a long and re
 
 \section{Conclusion}
 
-Phase I establishes a reproducible pipeline from raw credit and repayment data to an interpretable tree and a test prediction file. The tree reaches 0.805 hold-out accuracy, but its 0.560 balanced accuracy and 0.14 recall for payment difficulty show that the majority-class behavior is the dominant finding. The next phase should broaden the comparison to the three required model families, use five-fold cross-validation, and align model selection with the cost of missing customers who will experience payment difficulty.
+Phase I establishes a reproducible pipeline from raw credit and repayment data to an interpretable tree and a test prediction file. Across five stratified folds, the tree reaches 0.803 accuracy and 0.561 balanced accuracy, with only 0.140 recall for payment difficulty. The majority-class behavior is therefore the dominant finding. The next phase should broaden the comparison to the three required model families and align model selection with the cost of missing customers who will experience payment difficulty.
 
 \section{Use of generative AI}
 
