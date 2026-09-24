@@ -1,0 +1,144 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage[expansion=false]{microtype}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue, hypertexnames=false}
+
+\title{Explainable Classification of Payment Difficulty}
+\author{}
+\date{}
+
+\begin{document}
+\begin{titlepage}
+\centering
+\vspace*{2cm}
+{\Large Universidad Politecnica de Madrid\par}
+\vspace{1.2cm}
+{\huge\bfseries Explainable Classification of Payment Difficulty\par}
+\vspace{0.6cm}
+{\Large Phase I: Logical Model\par}
+\vfill
+\begin{tabular}{rl}
+\textbf{Group members:} & Thales S. A. Camargo -- thales.camargo@alumnos.upm.es\\
+						 & Jhon Corrales Almendariz -- jhon.corrales@alumnos.upm.es\\
+						 & Joel Montes de Oca Martínez -- joel.montes@alumnos.upm.es\\[0.4cm]
+\textbf{Course:} & Explainable Artificial Intelligence\\
+\textbf{Programme:} & Master in Artificial Intelligence\\
+\textbf{Date:} & September 2026
+\end{tabular}
+\vfill
+{\large Preliminary report for Tema 2 practical work\par}
+\end{titlepage}
+
+\begin{abstract}
+This report documents Phase I of the Tema 2 practical work in Explainable Artificial Intelligence. The accompanying notebook builds a transparent classification pipeline for predicting whether a customer will experience payment difficulty in the following month. Across five stratified folds, a decision tree obtains 0.803 +/- 0.005 accuracy and 0.561 +/- 0.010 balanced accuracy; recall for the difficult-payment class is only 0.140 +/- 0.020. The main finding is therefore that accuracy alone gives an overly optimistic picture of performance: the model strongly favors the majority class and requires comparison with other model families.
+\end{abstract}
+
+\section{Introduction}
+
+The task is a binary classification problem based on customer credit and repayment information. The training data contain the target variable \texttt{payment\_difficulty\_next\_month}; the test data contain the same predictors without that target. The objective is both predictive and explanatory: the model should produce test predictions while allowing its behavior to be inspected.
+
+The complete Phase I implementation is provided in \texttt{code/phase-1.ipynb}. It loads the data, identifies predictor roles, encodes categorical variables, fits an interpretable classification tree, evaluates it on a validation partition, produces a global explanation, and writes predictions for the unlabeled test set. The validation results show a substantial difference between ordinary and class-balanced performance. Class 0 has recall 0.98, whereas class 1 has recall 0.14. Consequently, the model is useful as a first transparent baseline, but it is not yet reliable for detecting payment difficulty.
+
+The notebook predicts class 1 for only 4.1\% of test observations. This is consistent with the validation behavior and reinforces the main conclusion: the current tree mostly protects accuracy by predicting the majority class. The report therefore treats balanced accuracy and class-specific recall as essential evidence rather than presenting the 0.805 accuracy in isolation.
+
+\section{Data and preprocessing}
+
+The notebook defines the feature roles explicitly rather than selecting columns implicitly. The identifier and target are excluded from the predictor matrix, while demographic, credit-limit, billing, payment, and repayment variables are used as predictors. Sex is retained as an audit attribute as well as a predictor, which makes later fairness-oriented analysis possible.
+
+The categorical variables are sex, education, marital status, and repayment assistance plan. They are transformed with one-hot encoding using \texttt{handle\_unknown=\allowbreak"ignore"}, so categories that appear only in the test split do not cause prediction failures. Numerical variables are concatenated with the encoded categorical variables without additional scaling.
+
+The labeled training data are split into training and validation partitions with a 70/30 ratio, a fixed random seed of 411, and stratification by the target. The unlabeled test data remain untouched until the final prediction stage. This procedure gives a reproducible validation estimate while preserving the test set for submission.
+
+\section{Method}
+
+The implementation uses pandas for tabular data loading and manipulation, scikit-learn for the stratified split, one-hot encoding, and evaluation metrics, and InterpretML for the class histogram, classification tree, and global explanation. Matplotlib is used for the final predicted-class proportion plot. The dependencies are pinned in \texttt{code/requirements.txt}.
+
+Only the labeled training data are split. Seventy percent is used for fitting and thirty percent for validation, with stratification preserving the class proportions and \texttt{random\_state=411} making the result reproducible. The separate test file is never used to fit the encoder or model: its categorical values are transformed after the encoder has been fitted on the training partition, with unknown categories ignored.
+
+The notebook uses five-fold stratified cross-validation on the labeled training partition to estimate the tree's performance. Each fold fits a fresh InterpretML tree on four fifths of the training partition and evaluates it on the remaining fifth. The separate test file is not used in cross-validation. The complete project must also compare this logical model with logistic regression and an Explainable Boosting Machine using the same five-fold protocol.
+
+\section{Results}
+
+Table~\ref{tab:model-summary} shows the model summary used in this assignment. The additional hold-out metrics in Table~\ref{tab:validation} are retained as a direct comparison with the original Phase I baseline, while the five-fold results are the more stable estimates used for interpretation.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Phase I model summary.}
+\label{tab:model-summary}
+\begin{tabular}{@{}p{0.23\linewidth}p{0.34\linewidth}p{0.34\linewidth}@{}}
+\toprule
+Classifier & Key settings & Five-fold CV result(s) \\
+\midrule
+ClassificationTree & InterpretML default tree; one-hot inputs & Accuracy $0.803\pm0.005$; balanced accuracy $0.561\pm0.010$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Decision-tree performance on the 30\% stratified validation split.}
+\label{tab:validation}
+\begin{tabular}{@{}lr@{}}
+\toprule
+Metric & Value \\
+\midrule
+Accuracy & 0.805 \\
+Balanced accuracy & 0.560 \\
+Class 0 precision / recall / F1 & 0.81 / 0.98 / 0.89 \\
+Class 1 precision / recall / F1 & 0.70 / 0.14 / 0.23 \\
+Validation observations & 7,500 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The original hold-out validation set contains 5,909 class-0 and 1,591 class-1 observations. The gap between class recalls explains why balanced accuracy is much lower than accuracy: the tree identifies most non-difficult cases but misses most difficult-payment cases. The same pattern persists across folds: class-0 recall is 0.981 +/- 0.004, while class-1 recall is 0.140 +/- 0.020. On the unlabeled test set, 95.9\% of predictions are class 0 and 4.1\% are class 1. These proportions are descriptive only because test labels are unavailable.
+
+\section{Models}
+
+The classifier is \texttt{ClassificationTree} from the \texttt{interpret} package. A decision tree is suitable for this phase because its decision structure can be inspected directly and because the package exposes global explanations of the fitted model \citep{nori2019interpretml}. The notebook also displays a class histogram for the training data using the same explainability toolkit.
+
+The tree is transparent in principle: each prediction can be traced through a sequence of feature conditions, and the global explanation exposes the learned structure. However, the current result suggests that the learned decision structure favors the majority class. In particular, the high class-0 recall and low class-1 recall indicate that the model has not found a sufficiently sensitive boundary for payment difficulty.
+
+A global explanation is generated with \texttt{tree.explain\_global}. This view supports inspection of the features and structures used by the tree. The explanation should be interpreted together with validation performance: a visually simple model is useful only if its predictive behavior is also adequate for the intended task.
+
+The two other model families required for the complete project are not yet fitted in Phase I. Logistic regression would provide a compact additive baseline whose coefficients can be inspected, while an Explainable Boosting Machine with zero interactions would allow flexible, feature-wise effects without abandoning global interpretability. Their five-fold results and local explanations should be added before making a comparative claim about which model is preferable.
+
+\section{Test predictions}
+
+Once validation is complete, the fitted tree predicts the unlabeled test set. The notebook copies the original test predictors, appends the \texttt{predicted\_class} column, and writes the result to \texttt{data/test\_predictions.csv}. It also plots the proportions of the predicted classes. Keeping the original predictors beside the prediction makes the generated file easier to audit and debug.
+
+\section{Limitations and future work}
+
+This phase now uses five-fold cross-validation for the tree, but it still evaluates only one tree configuration and one model family. The cross-validation standard deviations quantify variation across the five folds, but they are not a substitute for comparing alternative algorithms or configurations. Future work should use the same five-fold protocol for model comparison, hyperparameter choices, feature selection, and threshold selection, as required by the assignment. It should fit logistic regression and an Explainable Boosting Machine in addition to the tree, and report class-specific error costs if false negatives and false positives are unequal.
+
+The notebook already preserves sex as an audit attribute, but it does not yet calculate group-wise performance or fairness measures. A subsequent phase should compare error rates across relevant groups, inspect feature-importance stability, and use local explanations for the same representative instances across all three model families, including at least one instance from each class. Any such analysis should be performed without using the test labels.
+
+\section{Discussion}
+
+The tree is attractive for an initial explainability exercise because its rules can be communicated directly and its global explanation is easy to inspect. Its principal weakness is predictive asymmetry: the current model is much better at recognizing class 0 than class 1. Calling it a good model on the basis of accuracy alone would therefore be misleading. The balanced accuracy and class-1 recall suggest that a threshold, class weighting, or a different model configuration should be investigated under cross-validation.
+
+Interpretability also has a cost. A fully expanded tree can become a long and repetitive list of rules, making individual paths technically transparent but difficult to understand. A converted rule list could be improved by pruning redundant conditions, limiting depth, ordering rules by coverage and importance, and reporting the remaining uncovered cases explicitly. These changes would trade some local detail for a shorter and more usable explanation. The same trade-off should be assessed for logistic regression coefficients and additive feature-effect plots rather than assuming that one explanation format is universally superior.
+
+\section{Conclusion}
+
+Phase I establishes a reproducible pipeline from raw credit and repayment data to an interpretable tree and a test prediction file. Across five stratified folds, the tree reaches 0.803 accuracy and 0.561 balanced accuracy, with only 0.140 recall for payment difficulty. The majority-class behavior is therefore the dominant finding. The next phase should broaden the comparison to the three required model families and align model selection with the cost of missing customers who will experience payment difficulty.
+
+\section{Use of generative AI}
+
+Generative AI was used to help organize the report structure, improve wording, and identify gaps between the Phase I notebook and the project statement. All numerical results and methodological claims in this report were checked against the repository notebook and its recorded outputs. The group remains responsible for the code, analysis, interpretation, and final submission.
+
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
