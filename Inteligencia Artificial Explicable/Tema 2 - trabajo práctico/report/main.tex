@@ -68,7 +68,7 @@ The notebook uses five-fold stratified cross-validation on the labeled training 
 
 \section{Results}
 
-Table~\ref{tab:model-summary} follows the assignment's requested summary format. The additional hold-out metrics in Table~\ref{tab:validation} are retained as a direct comparison with the original Phase I baseline, while the five-fold results are the more stable estimates used for interpretation.
+Table~\ref{tab:model-summary} shows the model summary used in this assignment. The additional hold-out metrics in Table~\ref{tab:validation} are retained as a direct comparison with the original Phase I baseline, while the five-fold results are the more stable estimates used for interpretation.
 
 \begin{table}[ht]
 \centering
@@ -107,7 +107,7 @@ The original hold-out validation set contains 5,909 class-0 and 1,591 class-1 ob
 
 The classifier is \texttt{ClassificationTree} from the \texttt{interpret} package. A decision tree is suitable for this phase because its decision structure can be inspected directly and because the package exposes global explanations of the fitted model \citep{nori2019interpretml}. The notebook also displays a class histogram for the training data using the same explainability toolkit.
 
-The tree is transparent in principle: each prediction can be traced through a sequence of feature conditions, and the global explanation exposes the learned structure. However, the current result suggests that the learned decision structure favors the majority class. In particular, the high class-0 recall and low class-1 recall indicate that the model has not found a sufficiently sensitive boundary for payment difficulty. This is a substantive limitation, not merely a presentation issue.
+The tree is transparent in principle: each prediction can be traced through a sequence of feature conditions, and the global explanation exposes the learned structure. However, the current result suggests that the learned decision structure favors the majority class. In particular, the high class-0 recall and low class-1 recall indicate that the model has not found a sufficiently sensitive boundary for payment difficulty.
 
 A global explanation is generated with \texttt{tree.explain\_global}. This view supports inspection of the features and structures used by the tree. The explanation should be interpreted together with validation performance: a visually simple model is useful only if its predictive behavior is also adequate for the intended task.
 
@@ -137,22 +137,6 @@ Phase I establishes a reproducible pipeline from raw credit and repayment data t
 
 Generative AI was used to help organize the report structure, improve wording, and identify gaps between the Phase I notebook and the project statement. All numerical results and methodological claims in this report were checked against the repository notebook and its recorded outputs. The group remains responsible for the code, analysis, interpretation, and final submission.
 
-\section{Reproducibility}
-
-The repository layout is:
-
-\begin{verbatim}
-code/phase-1.ipynb
-code/requirements.txt
-data/train.csv
-data/test.csv
-data/test_predictions.csv
-report/main.tex
-report/references.bib
-report/figures/
-\end{verbatim}
-
-Install the dependencies from \texttt{code/requirements.txt}, open the notebook from \texttt{code/}, and execute its cells in order. The report can be compiled with a LaTeX installation using \texttt{main.tex} and \texttt{references.bib}.
 
 \bibliographystyle{plainnat}
 \bibliography{references}
