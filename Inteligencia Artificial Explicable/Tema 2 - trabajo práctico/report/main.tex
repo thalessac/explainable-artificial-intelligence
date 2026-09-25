@@ -29,7 +29,7 @@
 \begin{tabular}{rl}
 \textbf{Group members:} & Thales S. A. Camargo -- thales.camargo@alumnos.upm.es\\
 						 & Jhon Corrales Almendariz -- jhon.corrales@alumnos.upm.es\\
-						 & Joel Montes de Oca Martínez -- joel.montes@alumnos.upm.es\\[0.4cm]
+						 & Joel Montes de Oca Martínez -- joel.montesdeoca.martinez@alumnos.upm.es\\[0.4cm]
 \textbf{Course:} & Explainable Artificial Intelligence\\
 \textbf{Programme:} & Master in Artificial Intelligence\\
 \textbf{Date:} & September 2026
@@ -79,7 +79,7 @@ Table~\ref{tab:model-summary} shows the model summary used in this assignment. T
 \toprule
 Classifier & Key settings & Five-fold CV result(s) \\
 \midrule
-ClassificationTree & InterpretML default tree; one-hot inputs & Accuracy $0.803\pm0.005$; balanced accuracy $0.561\pm0.010$ \\
+ClassificationTree & Optimized (max\_depth=5, min\_samples\_leaf=50); one-hot inputs & Balanced accuracy $0.690$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -92,24 +92,24 @@ ClassificationTree & InterpretML default tree; one-hot inputs & Accuracy $0.803\
 \toprule
 Metric & Value \\
 \midrule
-Accuracy & 0.805 \\
-Balanced accuracy & 0.560 \\
-Class 0 precision / recall / F1 & 0.81 / 0.98 / 0.89 \\
-Class 1 precision / recall / F1 & 0.70 / 0.14 / 0.23 \\
+Accuracy & 0.813 \\
+Balanced accuracy & 0.609 \\
+Class 0 precision / recall / F1 & 0.83 / 0.96 / 0.89 \\
+Class 1 precision / recall / F1 & 0.65 / 0.26 / 0.37 \\
 Validation observations & 7,500 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The original hold-out validation set contains 5,909 class-0 and 1,591 class-1 observations. The gap between class recalls explains why balanced accuracy is much lower than accuracy: the tree identifies most non-difficult cases but misses most difficult-payment cases. The same pattern persists across folds: class-0 recall is 0.981 +/- 0.004, while class-1 recall is 0.140 +/- 0.020. On the unlabeled test set, 95.9\% of predictions are class 0 and 4.1\% are class 1. These proportions are descriptive only because test labels are unavailable.
+The original hold-out validation set contains 5,909 class-0 and 1,591 class-1 observations. The optimized tree improves class-1 recall to 0.26, increasing balanced accuracy to 0.609. The gap between class recalls explains why balanced accuracy is still lower than accuracy: the tree identifies most non-difficult cases but misses many difficult-payment cases. On the unlabeled test set, we anticipate a slightly better detection of class 1 due to the hyperparameter optimization.
 
 \section{Models}
 
-The classifier is \texttt{ClassificationTree} from the \texttt{interpret} package. A decision tree is suitable for this phase because its decision structure can be inspected directly and because the package exposes global explanations of the fitted model \citep{nori2019interpretml}. The notebook also displays a class histogram for the training data using the same explainability toolkit.
+The classifier is \texttt{ClassificationTree} from the \texttt{interpret} package. A decision tree is suitable for this phase because its decision structure can be inspected directly and because the package exposes global explanations of the fitted model \citep{nori2019interpretml}. We used \texttt{GridSearchCV} to optimize hyperparameters, selecting a \texttt{max\_depth} of 5 and \texttt{min\_samples\_leaf} of 50 based on balanced accuracy. The notebook also displays a class histogram for the training data, a confusion matrix, and a ROC curve with AUC metric.
 
-The tree is transparent in principle: each prediction can be traced through a sequence of feature conditions, and the global explanation exposes the learned structure. However, the current result suggests that the learned decision structure favors the majority class. In particular, the high class-0 recall and low class-1 recall indicate that the model has not found a sufficiently sensitive boundary for payment difficulty.
+The tree is transparent in principle: each prediction can be traced through a sequence of feature conditions, and the global explanation exposes the learned structure. By optimizing the hyperparameters, we have found a more balanced decision boundary, reducing the strong majority-class bias observed in the baseline.
 
-A global explanation is generated with \texttt{tree.explain\_global}. This view supports inspection of the features and structures used by the tree. The explanation should be interpreted together with validation performance: a visually simple model is useful only if its predictive behavior is also adequate for the intended task.
+A global explanation is generated with \texttt{tree.explain\_global}. This view supports inspection of the features and structures used by the tree. The explanation should be interpreted together with validation performance. Additionally, local explanations (\texttt{tree.explain\_local}) have been added to analyze specific predictions.
 
 The two other model families required for the complete project are not yet fitted in Phase I. Logistic regression would provide a compact additive baseline whose coefficients can be inspected, while an Explainable Boosting Machine with zero interactions would allow flexible, feature-wise effects without abandoning global interpretability. Their five-fold results and local explanations should be added before making a comparative claim about which model is preferable.
 
@@ -125,13 +125,13 @@ The notebook already preserves sex as an audit attribute, but it does not yet ca
 
 \section{Discussion}
 
-The tree is attractive for an initial explainability exercise because its rules can be communicated directly and its global explanation is easy to inspect. Its principal weakness is predictive asymmetry: the current model is much better at recognizing class 0 than class 1. Calling it a good model on the basis of accuracy alone would therefore be misleading. The balanced accuracy and class-1 recall suggest that a threshold, class weighting, or a different model configuration should be investigated under cross-validation.
+The tree is attractive for an initial explainability exercise because its rules can be communicated directly and its global explanation is easy to inspect. While the initial default model suffered from extreme predictive asymmetry, incorporating hyperparameter optimization (\texttt{GridSearchCV}) significantly improved the balance, raising balanced accuracy and class-1 recall.
 
-Interpretability also has a cost. A fully expanded tree can become a long and repetitive list of rules, making individual paths technically transparent but difficult to understand. A converted rule list could be improved by pruning redundant conditions, limiting depth, ordering rules by coverage and importance, and reporting the remaining uncovered cases explicitly. These changes would trade some local detail for a shorter and more usable explanation. The same trade-off should be assessed for logistic regression coefficients and additive feature-effect plots rather than assuming that one explanation format is universally superior.
+Interpretability also has a cost. A fully expanded tree can become a long and repetitive list of rules, making individual paths technically transparent but difficult to understand. Limiting the depth to 5 not only improved the balanced accuracy but also restricted the tree size, making the global and local explanations much more understandable. The same trade-off should be assessed for logistic regression coefficients and additive feature-effect plots rather than assuming that one explanation format is universally superior.
 
 \section{Conclusion}
 
-Phase I establishes a reproducible pipeline from raw credit and repayment data to an interpretable tree and a test prediction file. Across five stratified folds, the tree reaches 0.803 accuracy and 0.561 balanced accuracy, with only 0.140 recall for payment difficulty. The majority-class behavior is therefore the dominant finding. The next phase should broaden the comparison to the three required model families and align model selection with the cost of missing customers who will experience payment difficulty.
+Phase I establishes a reproducible pipeline from raw credit and repayment data to an interpretable tree and a test prediction file. With hyperparameter tuning, the tree reaches 0.813 accuracy and 0.609 balanced accuracy, with 0.26 recall for payment difficulty. While the majority-class behavior is still present, the optimized tree shows a noticeable improvement. The next phase should broaden the comparison to the three required model families and align model selection with the cost of missing customers who will experience payment difficulty.
 
 \section{Use of generative AI}
 
