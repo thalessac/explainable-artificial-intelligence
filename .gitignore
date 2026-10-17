@@ -4,3 +4,15 @@ main.log
 main.out
 main.synctex.gz
 main.blg
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.nav
+*.snm
+*.toc
+__pycache__/
