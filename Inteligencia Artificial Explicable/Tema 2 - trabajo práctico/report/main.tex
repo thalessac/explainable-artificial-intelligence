@@ -39,16 +39,16 @@
 \end{titlepage}
 
 \begin{abstract}
-This report documents the decision-tree and logistic-regression phases of the Tema 2 practical work in Explainable Artificial Intelligence. Across five stratified folds, the default logistic model achieves 0.788 +/- 0.000 accuracy but only 0.501 +/- 0.001 balanced accuracy, with 0.002 +/- 0.002 recall for the difficult-payment class. Hyperparameter tuning with balanced class weights raises its hold-out balanced accuracy to 0.680, at 0.713 accuracy. On the same validation split, the optimized tree obtains 0.609 balanced accuracy and 0.813 accuracy. The comparison illustrates the trade-off between overall accuracy and balanced detection of both classes.
+This report compares a decision tree, logistic regression, and an Explainable Boosting Machine (EBM) for predicting next-month payment difficulty. All models use the same stratified hold-out split and training-only preprocessing; five-fold cross-validation guides model comparison and hyperparameter selection. On the hold-out split, the optimized EBM obtains 0.822 accuracy and 0.631 balanced accuracy, the tree 0.813 and 0.609, and tuned logistic regression 0.713 and 0.680, respectively. Thus, the EBM has the highest accuracy of these runs, while logistic regression has the highest balanced accuracy. Global explanations and local explanations for the same three validation instances are used to compare how the model families reach their predictions.
 \end{abstract}
 
 \section{Introduction}
 
 The task is a binary classification problem based on customer credit and repayment information. The training data contain the target variable \texttt{payment\_difficulty\_next\_month}; the test data contain the same predictors without that target. The objective is both predictive and explanatory: the model should produce test predictions while allowing its behavior to be inspected.
 
-The decision-tree and logistic-regression implementations are provided in the Phase I and Phase II notebooks under \texttt{code/}. Both use a reproducible preprocessing pipeline, hold-out validation, and model-specific prediction exports, while their model families and explanation methods remain distinct. The default models favor the majority class; balanced-class hyperparameter tuning improves balanced accuracy, though the logistic model does so at the cost of lower overall accuracy.
+The decision-tree, logistic-regression, and EBM implementations are provided in the three phase notebooks under \texttt{code/}. All use a reproducible preprocessing pipeline, the same hold-out validation split, and model-specific prediction exports, while their model families and explanation methods remain distinct. The models favor class 0 to varying degrees: the tree and EBM retain higher overall accuracy, whereas tuned logistic regression gives the best balance between class recalls.
 
-The tuned decision tree predicts class 1 for only 4.1\% of test observations. Balanced accuracy and class-specific recall are therefore essential evidence rather than presenting accuracy in isolation. The logistic model's higher hold-out balanced accuracy is promising, but it should be considered alongside its lower accuracy and its class-specific errors.
+The models differ in how often they identify class 1, so balanced accuracy and class-specific recall are essential evidence rather than presenting accuracy in isolation. All three also provide different forms of explanation: explicit decision paths, additive linear coefficients, and learned additive feature effects.
 
 \section{Data and preprocessing}
 
@@ -60,32 +60,38 @@ The labeled training data are split into training and validation partitions with
 
 \section{Method}
 
-The implementation uses pandas for tabular data loading and manipulation, scikit-learn for the stratified split, one-hot encoding, logistic-regression parameter search, and evaluation metrics, and InterpretML for the class histogram, classification tree, logistic regression, and model explanations. Matplotlib is used for the feature-importance and predicted-class proportion plots. Shared data preparation and prediction-export functions are defined in \texttt{code/common.py}; dependencies are listed in \texttt{code/requirements.txt}.
+The implementation uses pandas for tabular data, scikit-learn for splitting, encoding, cross-validation, parameter search, and evaluation metrics, and InterpretML for the class histogram, classification tree, logistic regression, EBM, and model explanations. Matplotlib is used for feature-importance, confusion-matrix, ROC, and predicted-class proportion plots. Shared data preparation and prediction-export functions are defined in \texttt{code/common.py}; dependencies are listed in \texttt{code/requirements.txt}.
 
 Only the labeled training data are split. Seventy percent is used for fitting and thirty percent for validation, with stratification preserving the class proportions and \texttt{random\_state=411} making the result reproducible. The separate test file is never used to fit the encoder or model: its categorical values are transformed after the encoder has been fitted on the training partition, with unknown categories ignored.
 
-The notebooks use five-fold stratified cross-validation to characterize the default models and select hyperparameters using balanced accuracy. For the tree, the selected depth is 5 and the minimum leaf size is 50, with a best search score of 0.690. For logistic regression, the selected settings are $C=100$ and balanced class weights, with a best search score of 0.671. Each final model is evaluated separately on the same 30\% hold-out partition. A grid-search score is a parameter-selection result, not an independent estimate of the final refit. The separate test file is not used in model selection or validation. The Explainable Boosting Machine remains to be added for the complete three-family comparison.
+The common protocol begins with a 70/30 stratified split of the labeled data using \texttt{random\_state=411}. Four categorical predictors are one-hot encoded by an encoder fitted only on the training partition; unknown categories are ignored, and numerical predictors are kept on their original scale. The same transformed training and validation rows are used for all three model families. Five-fold stratified cross-validation with seed 411 is run within the training partition. Balanced accuracy is the search objective because the target classes are imbalanced; accuracy and class-specific recalls are also reported. The hold-out validation partition is used for a common final comparison, while the unlabeled test data are excluded from fitting, tuning, and evaluation.
+
+The tree search selects \texttt{max\_depth=5} and \texttt{min\_samples\_leaf=50}; its search estimator is a class-weighted scikit-learn tree, while the selected structure is refit as an InterpretML \texttt{ClassificationTree}. Logistic regression selects $C=100$ with balanced class weights. The EBM search selects \texttt{max\_leaves=2} and \texttt{learning\_rate=0.01}; it uses \texttt{interactions=0}, four outer bags, early stopping, and seed 411. Its zero-interaction constraint yields an additive model whose prediction is built from separate learned feature effects rather than pairwise interaction terms. Search scores are cross-validation selection scores, not unbiased estimates of the final refits; the same hold-out partition provides the directly comparable validation results.
 
 \section{Results}
 
-\subsection{Decision Tree}
-
-Table~\ref{tab:model-summary} summarizes the selected tree configuration and its best grid-search score. Table~\ref{tab:validation} reports the separate hold-out results for the refitted optimized tree. The default-tree cross-validation metrics in the abstract provide a baseline and should not be confused with the tuned model's hold-out results.
+Table~\ref{tab:model-summary} begins the results with one row for each required estimator family. The cross-validation column reports the best balanced-accuracy search score; hold-out metrics are shown for context and are not substituted for the cross-validation comparison.
 
 \begin{table}[ht]
 \centering
 \small
-\caption{Phase I model summary.}
+\caption{Summary of the three fitted estimator families.}
 \label{tab:model-summary}
-\begin{tabular}{@{}p{0.23\linewidth}p{0.34\linewidth}p{0.34\linewidth}@{}}
+\begin{tabular}{@{}p{0.22\linewidth}p{0.33\linewidth}ccc@{}}
 \toprule
-Classifier & Key settings & Five-fold CV result(s) \\
+Classifier & Key settings & Five-fold CV balanced accuracy & Hold-out accuracy & Hold-out balanced accuracy \\
 \midrule
-ClassificationTree & max\_depth=5, min\_samples\_leaf=50; unweighted refit & Search balanced accuracy $0.690^{*}$ \\
+Decision tree & depth 5; leaf size 50 & $0.690^{*}$ & 0.813 & 0.609 \\
+Logistic regression & $C=100$; balanced weights & 0.671 & 0.713 & 0.680 \\
+Explainable Boosting Machine & interactions=0; 2 leaves; learning rate 0.01 & 0.624 & 0.822 & 0.631 \\
 \bottomrule
 \end{tabular}
 \end{table}
-\noindent\footnotesize{$^{*}$The score is from the class-weighted scikit-learn tree used for parameter search; it is not an independent cross-validation estimate of the final InterpretML refit.}
+\noindent\footnotesize{$^{*}$The tree search score comes from the class-weighted scikit-learn search estimator; the selected configuration is refit as an unweighted InterpretML tree. All search scores are used for selection and are not independent performance estimates.}
+
+\subsection{Decision Tree}
+
+The hold-out tree accuracy is 0.813 and balanced accuracy is 0.609. Its class-0 recall is 0.96, compared with 0.26 for class 1. This gap accounts for the difference between the two aggregate metrics: the model detects most non-difficult cases but misses many difficult-payment cases.
 
 \begin{table}[ht]
 \centering
@@ -104,7 +110,7 @@ Validation observations & 7,500 \\
 \end{tabular}
 \end{table}
 
-The original hold-out validation set contains 5,909 class-0 and 1,591 class-1 observations. The optimized tree improves class-1 recall to 0.26, increasing balanced accuracy to 0.609. The gap between class recalls explains why balanced accuracy is still lower than accuracy: the tree identifies most non-difficult cases but misses many difficult-payment cases. On the unlabeled test set, we anticipate a slightly better detection of class 1 due to the hyperparameter optimization.
+The hold-out validation set contains 5,909 class-0 and 1,591 class-1 observations. No conclusion about test-set recall can be drawn because the test labels are unavailable.
 
 The optimized tree's global explanation is generated with \texttt{tree.explain\_global}. Figure~\ref{fig:tree-importance} complements the interactive explanation with the fitted tree's split-based feature-importance ranking. Repayment status and the payment-to-bill ratio dominate the model's splits; this ranking describes the fitted tree and should not be read as a causal effect.
 
@@ -119,21 +125,7 @@ The optimized tree's global explanation is generated with \texttt{tree.explain\_
 
 Table~\ref{tab:logistic-results} summarizes the default and tuned logistic models. The default model nearly always predicts the majority class: its mean class-1 recall is 0.002 across the five folds, despite accuracy of 0.788. The grid search selects $C=100$ and balanced class weights. On the hold-out split, tuning raises balanced accuracy from 0.501 to 0.680, while accuracy falls from 0.788 to 0.713. This is a more balanced result than the optimized tree's 0.609 balanced accuracy, but the tree retains higher accuracy at 0.813. The two metrics therefore describe a genuine trade-off rather than one model dominating on every criterion.
 
-\begin{table}[ht]
-\centering
-\small
-\caption{Logistic-regression cross-validation and hold-out results.}
-\label{tab:logistic-results}
-\begin{tabular}{@{}p{0.31\linewidth}p{0.22\linewidth}rr@{}}
-\toprule
-Model & \shortstack{Five-fold CV\\balanced accuracy} & \shortstack{Hold-out\\accuracy} & \shortstack{Hold-out\\balanced accuracy} \\
-\midrule
-Default InterpretML logistic regression & $0.501 \pm 0.001$ & 0.788 & 0.501 \\
-Tuned logistic regression ($C=100$, balanced weights) & $0.671^{*}$ & 0.713 & 0.680 \\
-\bottomrule
-\end{tabular}
-\end{table}
-\noindent\footnotesize{$^{*}$The score is the best GridSearchCV selection score; it is not an independent estimate of the final refit.}
+The tuned model reaches 0.680 hold-out balanced accuracy, the strongest of the three, while its 0.713 accuracy is the lowest. Its default version predicts almost exclusively class 0 (five-fold class-1 recall $0.002 \pm 0.002$); class weighting increases sensitivity to the minority class at the cost of more false positives.
 
 The optimized model's coefficient-magnitude ranking (Figure~\ref{fig:logistic-importance}) places latest repayment status, zero-payment months, and delayed months among the strongest features. Repayment-assistance indicators and utilization also appear in the top twelve. The plot shows absolute coefficient magnitudes, so it indicates relative influence in this fitted linear model but not the direction of each association or a causal effect.
 
@@ -144,7 +136,20 @@ The optimized model's coefficient-magnitude ranking (Figure~\ref{fig:logistic-im
 \label{fig:logistic-importance}
 \end{figure}
 
-The notebook also examines representative local validation cases. It includes a correctly detected class-1 case with predicted probability 0.656 and a missed class-1 case with probability 0.377, below the model's 0.5 decision threshold. These examples make the probability-to-class decision visible, but they are illustrative cases rather than estimates of overall error rates.
+For the shared local cases used below, the logistic model assigns class-1 probabilities of 0.130, 0.656, and 0.377, respectively. With the 0.5 threshold, it correctly classifies the first two and misses the third; the local InterpretML explanation decomposes each prediction into feature contributions.
+
+\subsection{Explainable Boosting Machine}
+
+The EBM is a generalized additive model that learns a flexible, potentially nonlinear response curve for each feature and adds those effects to form the prediction. Setting \texttt{interactions=0} excludes pairwise terms, preserving a feature-wise explanation while allowing more flexibility than a linear logit. The search selects two leaves per feature and a learning rate of 0.01. On the hold-out set it reaches 0.822 accuracy and 0.631 balanced accuracy; recalls are 0.96 for class 0 and 0.30 for class 1. This gives the EBM the highest accuracy among these runs, but its class-1 recall and balanced accuracy remain below those of tuned logistic regression.
+
+Figure~\ref{fig:ebm-importance} ranks the EBM's most influential additive terms by mean absolute contribution. Unlike the linear model's coefficient magnitudes, EBM term importance summarizes the magnitude of learned effects across observations; the direction and shape of each effect are available in the notebook's global explanation.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\linewidth]{figures/ebm_global_importance.png}
+\caption{The twelve most influential additive terms in the optimized EBM.}
+\label{fig:ebm-importance}
+\end{figure}
 
 \section{Models}
 
@@ -183,7 +188,7 @@ Missed class 1 & 1 & 0 & Non-delayed repayment status; payment-to-bill ratio bet
 
 These are illustrative cases, not a substitute for evaluating the model across the full validation set. The interactive local explanations and exact split conditions for each selected case are included in the notebook.
 
-The remaining model family for the complete project is an Explainable Boosting Machine with zero interactions, which would allow flexible feature-wise effects while retaining global interpretability. Its five-fold results and local explanations should be added before drawing a final comparison across all required model families.
+The EBM's learned feature effects provide a compromise between the tree's discrete rules and the linear model's constant per-feature coefficients. With no interaction terms, each feature's contribution can be inspected separately, although interpreting the response curves still requires attention to their scales and direction.
 
 \section{Test predictions}
 
