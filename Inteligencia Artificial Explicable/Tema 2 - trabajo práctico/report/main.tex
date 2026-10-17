@@ -39,14 +39,14 @@
 \end{titlepage}
 
 \begin{abstract}
-This report documents Phase I of the Tema 2 practical work in Explainable Artificial Intelligence. The accompanying notebook builds a transparent classification pipeline for predicting whether a customer will experience payment difficulty in the following month. Across five stratified folds, a decision tree obtains 0.803 +/- 0.005 accuracy and 0.561 +/- 0.010 balanced accuracy; recall for the difficult-payment class is only 0.140 +/- 0.020. The main finding is therefore that accuracy alone gives an overly optimistic picture of performance: the model strongly favors the majority class and requires comparison with other model families.
+This report documents Phase I of the Tema 2 practical work in Explainable Artificial Intelligence. The accompanying notebook builds a transparent classification pipeline for predicting whether a customer will experience payment difficulty in the following month. The default tree obtains 0.803 +/- 0.005 accuracy and 0.561 +/- 0.010 balanced accuracy across five stratified folds; recall for the difficult-payment class is only 0.140 +/- 0.020. The optimized tree improves class-1 recall to 0.26 on the hold-out validation set, but accuracy alone still gives an overly optimistic picture. The model favors the majority class and requires comparison with other model families.
 \end{abstract}
 
 \section{Introduction}
 
 The task is a binary classification problem based on customer credit and repayment information. The training data contain the target variable \texttt{payment\_difficulty\_next\_month}; the test data contain the same predictors without that target. The objective is both predictive and explanatory: the model should produce test predictions while allowing its behavior to be inspected.
 
-The complete Phase I implementation is provided in \texttt{code/phase-1.ipynb}. It loads the data, identifies predictor roles, encodes categorical variables, fits an interpretable classification tree, evaluates it on a validation partition, produces a global explanation, and writes predictions for the unlabeled test set. The validation results show a substantial difference between ordinary and class-balanced performance. Class 0 has recall 0.98, whereas class 1 has recall 0.14. Consequently, the model is useful as a first transparent baseline, but it is not yet reliable for detecting payment difficulty.
+The complete Phase I implementation is provided in \texttt{code/phase-1.ipynb}. It loads the data, identifies predictor roles, encodes categorical variables, fits an interpretable classification tree, evaluates it on a validation partition, produces global and local explanations, and writes predictions for the unlabeled test set. Five-fold cross-validation of the default tree shows a substantial difference between ordinary and class-balanced performance: class 0 has mean recall 0.981, whereas class 1 has mean recall 0.140. The optimized tree raises class-1 recall to 0.26 on the hold-out partition, but still misses many customers experiencing payment difficulty.
 
 The notebook predicts class 1 for only 4.1\% of test observations. This is consistent with the validation behavior and reinforces the main conclusion: the current tree mostly protects accuracy by predicting the majority class. The report therefore treats balanced accuracy and class-specific recall as essential evidence rather than presenting the 0.805 accuracy in isolation.
 
@@ -64,11 +64,11 @@ The implementation uses pandas for tabular data loading and manipulation, scikit
 
 Only the labeled training data are split. Seventy percent is used for fitting and thirty percent for validation, with stratification preserving the class proportions and \texttt{random\_state=411} making the result reproducible. The separate test file is never used to fit the encoder or model: its categorical values are transformed after the encoder has been fitted on the training partition, with unknown categories ignored.
 
-The notebook uses five-fold stratified cross-validation on the labeled training partition to estimate the tree's performance. Each fold fits a fresh InterpretML tree on four fifths of the training partition and evaluates it on the remaining fifth. The separate test file is not used in cross-validation. The complete project must also compare this logical model with logistic regression and an Explainable Boosting Machine using the same five-fold protocol.
+The notebook first uses five-fold stratified cross-validation on the labeled training partition to characterize a default InterpretML tree. Hyperparameters are then selected by a five-fold grid search over a class-weighted scikit-learn decision-tree estimator using balanced accuracy; the selected depth is 5 and the minimum leaf size is 50, with a best search score of 0.690. The final InterpretML refit applies the selected depth and leaf size but uses the wrapper's default class weighting. Therefore, the search score is a selection result, not an independent cross-validation estimate of that final refit. The refitted InterpretML tree is evaluated separately on the 30\% hold-out partition. The separate test file is not used in model selection or validation. The complete project must also compare this logical model with logistic regression and an Explainable Boosting Machine using the same five-fold protocol.
 
 \section{Results}
 
-Table~\ref{tab:model-summary} shows the model summary used in this assignment. The additional hold-out metrics in Table~\ref{tab:validation} are retained as a direct comparison with the original Phase I baseline, while the five-fold results are the more stable estimates used for interpretation.
+Table~\ref{tab:model-summary} summarizes the selected tree configuration and its best grid-search score. Table~\ref{tab:validation} reports the separate hold-out results for the refitted optimized tree. The default-tree cross-validation metrics in the abstract provide a baseline and should not be confused with the tuned model's hold-out results.
 
 \begin{table}[ht]
 \centering
@@ -79,10 +79,11 @@ Table~\ref{tab:model-summary} shows the model summary used in this assignment. T
 \toprule
 Classifier & Key settings & Five-fold CV result(s) \\
 \midrule
-ClassificationTree & Optimized (max\_depth=5, min\_samples\_leaf=50); one-hot inputs & Balanced accuracy $0.690$ \\
+ClassificationTree & max\_depth=5, min\_samples\_leaf=50; unweighted refit & Search balanced accuracy $0.690^{*}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
+\noindent\footnotesize{$^{*}$The score is from the class-weighted scikit-learn tree used for parameter search; it is not an independent cross-validation estimate of the final InterpretML refit.}
 
 \begin{table}[ht]
 \centering
@@ -109,7 +110,43 @@ The classifier is \texttt{ClassificationTree} from the \texttt{interpret} packag
 
 The tree is transparent in principle: each prediction can be traced through a sequence of feature conditions, and the global explanation exposes the learned structure. By optimizing the hyperparameters, we have found a more balanced decision boundary, reducing the strong majority-class bias observed in the baseline.
 
-A global explanation is generated with \texttt{tree.explain\_global}. This view supports inspection of the features and structures used by the tree. The explanation should be interpreted together with validation performance. Additionally, local explanations (\texttt{tree.explain\_local}) have been added to analyze specific predictions.
+The optimized tree's global explanation is generated with \texttt{tree.explain\_global}. Figure~\ref{fig:tree-importance} complements the interactive explanation with the fitted tree's split-based feature-importance ranking. Repayment status and the payment-to-bill ratio dominate the model's splits; this ranking describes the fitted tree and should not be read as a causal effect.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\linewidth]{figures/tree_global_importance.png}
+\caption{The twelve highest split-based feature importances for the optimized tree.}
+\label{fig:tree-importance}
+\end{figure}
+
+Figure~\ref{fig:tree-overview} shows the first three levels of the optimized tree. The full depth-five tree is available in the notebook; limiting the report view keeps its main decision structure readable without hiding that lower-level branches exist.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/decision_tree_report.png}
+\caption{Readable overview of the optimized decision tree. Node colors indicate the predicted class and shading indicates class purity; lower branches are collapsed.}
+\label{fig:tree-overview}
+\end{figure}
+
+For local interpretation, the notebook selects fixed cases from the validation split, including correctly predicted examples from both classes and a missed class-1 example. Table~\ref{tab:local-examples} summarizes their paths. The missed positive reaches a class-0 leaf despite a repayment-assistance indicator, illustrating why the global model's strong majority-class behavior matters for individual decisions.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Representative local decision paths from the validation set.}
+\label{tab:local-examples}
+\begin{tabular}{@{}p{0.18\linewidth}ccp{0.50\linewidth}@{}}
+\toprule
+Case & Actual & Predicted & Path summary \\
+\midrule
+Correct class 0 & 0 & 0 & Non-delayed repayment status; payment-to-bill ratio above 0.105 and at most 1.91; no assistance plan; at most 2.5 zero-payment months. \\
+Detected class 1 & 1 & 1 & Delayed repayment status; payment-to-bill ratio at most 0.095; at most 5.5 delayed months; more than 2.5 zero-payment months; age above 25.5. \\
+Missed class 1 & 1 & 0 & Non-delayed repayment status; payment-to-bill ratio between 0.025 and 0.105; age above 24.5; assistance-plan flag is yes. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These are illustrative cases, not a substitute for evaluating the model across the full validation set. The interactive local explanations and exact split conditions for each selected case are included in the notebook.
 
 The two other model families required for the complete project are not yet fitted in Phase I. Logistic regression would provide a compact additive baseline whose coefficients can be inspected, while an Explainable Boosting Machine with zero interactions would allow flexible, feature-wise effects without abandoning global interpretability. Their five-fold results and local explanations should be added before making a comparative claim about which model is preferable.
 

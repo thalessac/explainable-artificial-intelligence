@@ -10,7 +10,7 @@ This directory contains the explainable artificial intelligence practical work.
 
 ## Reproduce the notebook
 
-Open `code/phase-1.ipynb` and run the cells from top to bottom with the working directory set to `code/`. The notebook reads `../data/train.csv` and `../data/test.csv`, and writes predictions to `../data/test_predictions.csv`.
+Open `code/phase_1.ipynb` and run the cells from top to bottom with the working directory set to `code/`. The notebook reads `../data/train.csv` and `../data/test.csv`, and writes predictions to `../data/test_predictions.csv`.
 
 Install the dependencies with:
 
@@ -18,4 +18,4 @@ Install the dependencies with:
 pip install -r code/requirements.txt
 ```
 
-The notebook uses a stratified validation split, one-hot encoding for categorical predictors, an `interpret` classification tree, validation metrics, and global model explanations.
+The notebook uses a stratified validation split, one-hot encoding for categorical predictors, an `interpret` classification tree, validation metrics, global and local explanations, and readable decision-tree figures.
