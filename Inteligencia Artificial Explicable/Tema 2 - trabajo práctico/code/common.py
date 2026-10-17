@@ -14,7 +14,7 @@ from sklearn.preprocessing import OneHotEncoder
 CODE_DIR: Path = Path(__file__).resolve().parent
 DATA_DIR: Path = CODE_DIR.parent / "data"
 
-DATA_DICTIONARY: dict[str, str] = {
+DATA_DICTIONARY = {
     "row_id": "identifier",
     "credit_limit": "predictor",
     "sex": "predictor / audit attribute",
@@ -35,7 +35,7 @@ DATA_DICTIONARY: dict[str, str] = {
     "predicted_class": "submission",
 }
 
-CATEGORICAL_COLUMNS: tuple[str, ...] = (
+CATEGORICAL_COLUMNS = (
     "sex",
     "education",
     "marital_status",

@@ -24,7 +24,7 @@
 \vspace{1.2cm}
 {\huge\bfseries Explainable Classification of Payment Difficulty\par}
 \vspace{0.6cm}
-{\Large Phase I: Logical Model\par}
+{\Large Phases I--II: Decision Tree and Logistic Regression\par}
 \vfill
 \begin{tabular}{rl}
 \textbf{Group members:} & Thales S. A. Camargo -- thales.camargo@alumnos.upm.es\\
@@ -39,16 +39,16 @@
 \end{titlepage}
 
 \begin{abstract}
-This report documents Phase I of the Tema 2 practical work in Explainable Artificial Intelligence. The accompanying notebook builds a transparent classification pipeline for predicting whether a customer will experience payment difficulty in the following month. The default tree obtains 0.803 +/- 0.005 accuracy and 0.561 +/- 0.010 balanced accuracy across five stratified folds; recall for the difficult-payment class is only 0.140 +/- 0.020. The optimized tree improves class-1 recall to 0.26 on the hold-out validation set, but accuracy alone still gives an overly optimistic picture. The model favors the majority class and requires comparison with other model families.
+This report documents the decision-tree and logistic-regression phases of the Tema 2 practical work in Explainable Artificial Intelligence. Across five stratified folds, the default logistic model achieves 0.788 +/- 0.000 accuracy but only 0.501 +/- 0.001 balanced accuracy, with 0.002 +/- 0.002 recall for the difficult-payment class. Hyperparameter tuning with balanced class weights raises its hold-out balanced accuracy to 0.680, at 0.713 accuracy. On the same validation split, the optimized tree obtains 0.609 balanced accuracy and 0.813 accuracy. The comparison illustrates the trade-off between overall accuracy and balanced detection of both classes.
 \end{abstract}
 
 \section{Introduction}
 
 The task is a binary classification problem based on customer credit and repayment information. The training data contain the target variable \texttt{payment\_difficulty\_next\_month}; the test data contain the same predictors without that target. The objective is both predictive and explanatory: the model should produce test predictions while allowing its behavior to be inspected.
 
-The complete Phase I implementation is provided in \texttt{code/phase-1.ipynb}. It loads the data, identifies predictor roles, encodes categorical variables, fits an interpretable classification tree, evaluates it on a validation partition, produces global and local explanations, and writes predictions for the unlabeled test set. Five-fold cross-validation of the default tree shows a substantial difference between ordinary and class-balanced performance: class 0 has mean recall 0.981, whereas class 1 has mean recall 0.140. The optimized tree raises class-1 recall to 0.26 on the hold-out partition, but still misses many customers experiencing payment difficulty.
+The decision-tree and logistic-regression implementations are provided in the Phase I and Phase II notebooks under \texttt{code/}. Both use a reproducible preprocessing pipeline, hold-out validation, and model-specific prediction exports, while their model families and explanation methods remain distinct. The default models favor the majority class; balanced-class hyperparameter tuning improves balanced accuracy, though the logistic model does so at the cost of lower overall accuracy.
 
-The notebook predicts class 1 for only 4.1\% of test observations. This is consistent with the validation behavior and reinforces the main conclusion: the current tree mostly protects accuracy by predicting the majority class. The report therefore treats balanced accuracy and class-specific recall as essential evidence rather than presenting the 0.805 accuracy in isolation.
+The tuned decision tree predicts class 1 for only 4.1\% of test observations. Balanced accuracy and class-specific recall are therefore essential evidence rather than presenting accuracy in isolation. The logistic model's higher hold-out balanced accuracy is promising, but it should be considered alongside its lower accuracy and its class-specific errors.
 
 \section{Data and preprocessing}
 
@@ -60,13 +60,15 @@ The labeled training data are split into training and validation partitions with
 
 \section{Method}
 
-The implementation uses pandas for tabular data loading and manipulation, scikit-learn for the stratified split, one-hot encoding, and evaluation metrics, and InterpretML for the class histogram, classification tree, and global explanation. Matplotlib is used for the final predicted-class proportion plot. The dependencies are pinned in \texttt{code/requirements.txt}.
+The implementation uses pandas for tabular data loading and manipulation, scikit-learn for the stratified split, one-hot encoding, logistic-regression parameter search, and evaluation metrics, and InterpretML for the class histogram, classification tree, logistic regression, and model explanations. Matplotlib is used for the feature-importance and predicted-class proportion plots. Shared data preparation and prediction-export functions are defined in \texttt{code/common.py}; dependencies are listed in \texttt{code/requirements.txt}.
 
 Only the labeled training data are split. Seventy percent is used for fitting and thirty percent for validation, with stratification preserving the class proportions and \texttt{random\_state=411} making the result reproducible. The separate test file is never used to fit the encoder or model: its categorical values are transformed after the encoder has been fitted on the training partition, with unknown categories ignored.
 
-The notebook first uses five-fold stratified cross-validation on the labeled training partition to characterize a default InterpretML tree. Hyperparameters are then selected by a five-fold grid search over a class-weighted scikit-learn decision-tree estimator using balanced accuracy; the selected depth is 5 and the minimum leaf size is 50, with a best search score of 0.690. The final InterpretML refit applies the selected depth and leaf size but uses the wrapper's default class weighting. Therefore, the search score is a selection result, not an independent cross-validation estimate of that final refit. The refitted InterpretML tree is evaluated separately on the 30\% hold-out partition. The separate test file is not used in model selection or validation. The complete project must also compare this logical model with logistic regression and an Explainable Boosting Machine using the same five-fold protocol.
+The notebooks use five-fold stratified cross-validation to characterize the default models and select hyperparameters using balanced accuracy. For the tree, the selected depth is 5 and the minimum leaf size is 50, with a best search score of 0.690. For logistic regression, the selected settings are $C=100$ and balanced class weights, with a best search score of 0.671. Each final model is evaluated separately on the same 30\% hold-out partition. A grid-search score is a parameter-selection result, not an independent estimate of the final refit. The separate test file is not used in model selection or validation. The Explainable Boosting Machine remains to be added for the complete three-family comparison.
 
 \section{Results}
+
+\subsection{Decision Tree}
 
 Table~\ref{tab:model-summary} summarizes the selected tree configuration and its best grid-search score. Table~\ref{tab:validation} reports the separate hold-out results for the refitted optimized tree. The default-tree cross-validation metrics in the abstract provide a baseline and should not be confused with the tuned model's hold-out results.
 
@@ -104,12 +106,6 @@ Validation observations & 7,500 \\
 
 The original hold-out validation set contains 5,909 class-0 and 1,591 class-1 observations. The optimized tree improves class-1 recall to 0.26, increasing balanced accuracy to 0.609. The gap between class recalls explains why balanced accuracy is still lower than accuracy: the tree identifies most non-difficult cases but misses many difficult-payment cases. On the unlabeled test set, we anticipate a slightly better detection of class 1 due to the hyperparameter optimization.
 
-\section{Models}
-
-The classifier is \texttt{ClassificationTree} from the \texttt{interpret} package. A decision tree is suitable for this phase because its decision structure can be inspected directly and because the package exposes global explanations of the fitted model \citep{nori2019interpretml}. We used \texttt{GridSearchCV} to optimize hyperparameters, selecting a \texttt{max\_depth} of 5 and \texttt{min\_samples\_leaf} of 50 based on balanced accuracy. The notebook also displays a class histogram for the training data, a confusion matrix, and a ROC curve with AUC metric.
-
-The tree is transparent in principle: each prediction can be traced through a sequence of feature conditions, and the global explanation exposes the learned structure. By optimizing the hyperparameters, we have found a more balanced decision boundary, reducing the strong majority-class bias observed in the baseline.
-
 The optimized tree's global explanation is generated with \texttt{tree.explain\_global}. Figure~\ref{fig:tree-importance} complements the interactive explanation with the fitted tree's split-based feature-importance ranking. Repayment status and the payment-to-bill ratio dominate the model's splits; this ranking describes the fitted tree and should not be read as a causal effect.
 
 \begin{figure}[htbp]
@@ -118,6 +114,45 @@ The optimized tree's global explanation is generated with \texttt{tree.explain\_
 \caption{The twelve highest split-based feature importances for the optimized tree.}
 \label{fig:tree-importance}
 \end{figure}
+
+\subsection{Logistic Regression}
+
+Table~\ref{tab:logistic-results} summarizes the default and tuned logistic models. The default model nearly always predicts the majority class: its mean class-1 recall is 0.002 across the five folds, despite accuracy of 0.788. The grid search selects $C=100$ and balanced class weights. On the hold-out split, tuning raises balanced accuracy from 0.501 to 0.680, while accuracy falls from 0.788 to 0.713. This is a more balanced result than the optimized tree's 0.609 balanced accuracy, but the tree retains higher accuracy at 0.813. The two metrics therefore describe a genuine trade-off rather than one model dominating on every criterion.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Logistic-regression cross-validation and hold-out results.}
+\label{tab:logistic-results}
+\begin{tabular}{@{}p{0.31\linewidth}p{0.22\linewidth}rr@{}}
+\toprule
+Model & \shortstack{Five-fold CV\\balanced accuracy} & \shortstack{Hold-out\\accuracy} & \shortstack{Hold-out\\balanced accuracy} \\
+\midrule
+Default InterpretML logistic regression & $0.501 \pm 0.001$ & 0.788 & 0.501 \\
+Tuned logistic regression ($C=100$, balanced weights) & $0.671^{*}$ & 0.713 & 0.680 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\noindent\footnotesize{$^{*}$The score is the best GridSearchCV selection score; it is not an independent estimate of the final refit.}
+
+The optimized model's coefficient-magnitude ranking (Figure~\ref{fig:logistic-importance}) places latest repayment status, zero-payment months, and delayed months among the strongest features. Repayment-assistance indicators and utilization also appear in the top twelve. The plot shows absolute coefficient magnitudes, so it indicates relative influence in this fitted linear model but not the direction of each association or a causal effect.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\linewidth]{figures/logit_global_importance.png}
+\caption{The twelve largest absolute coefficients in the optimized logistic model.}
+\label{fig:logistic-importance}
+\end{figure}
+
+The notebook also examines representative local validation cases. It includes a correctly detected class-1 case with predicted probability 0.656 and a missed class-1 case with probability 0.377, below the model's 0.5 decision threshold. These examples make the probability-to-class decision visible, but they are illustrative cases rather than estimates of overall error rates.
+
+\section{Models}
+
+The classifier is \texttt{ClassificationTree} from the \texttt{interpret} package. A decision tree is suitable for this phase because its decision structure can be inspected directly and because the package exposes global explanations of the fitted model \citep{nori2019interpretml}. We used \texttt{GridSearchCV} to optimize hyperparameters, selecting a \texttt{max\_depth} of 5 and \texttt{min\_samples\_leaf} of 50 based on balanced accuracy. The notebook also displays a class histogram for the training data, a confusion matrix, and a ROC curve with AUC metric.
+
+The tree is transparent in principle: each prediction can be traced through a sequence of feature conditions, and the global explanation exposes the learned structure. Logistic regression offers a different form of transparency: its prediction is an additive function of the encoded features, and the coefficient magnitudes identify which terms most affect the fitted score. Neither representation should be interpreted causally, and the different explanation formats are not directly interchangeable.
+
+The optimized tree's global explanation is generated with \texttt{tree.explain\_global}. Its split-based feature-importance ranking places repayment status and the payment-to-bill ratio among the most influential features; this ranking describes the fitted tree and should not be read as a causal effect.
 
 Figure~\ref{fig:tree-overview} shows the first three levels of the optimized tree. The full depth-five tree is available in the notebook; limiting the report view keeps its main decision structure readable without hiding that lower-level branches exist.
 
@@ -148,27 +183,27 @@ Missed class 1 & 1 & 0 & Non-delayed repayment status; payment-to-bill ratio bet
 
 These are illustrative cases, not a substitute for evaluating the model across the full validation set. The interactive local explanations and exact split conditions for each selected case are included in the notebook.
 
-The two other model families required for the complete project are not yet fitted in Phase I. Logistic regression would provide a compact additive baseline whose coefficients can be inspected, while an Explainable Boosting Machine with zero interactions would allow flexible, feature-wise effects without abandoning global interpretability. Their five-fold results and local explanations should be added before making a comparative claim about which model is preferable.
+The remaining model family for the complete project is an Explainable Boosting Machine with zero interactions, which would allow flexible feature-wise effects while retaining global interpretability. Its five-fold results and local explanations should be added before drawing a final comparison across all required model families.
 
 \section{Test predictions}
 
-Once validation is complete, the fitted tree predicts the unlabeled test set. The notebook copies the original test predictors, appends the \texttt{predicted\_class} column, and writes the result to \texttt{data/test\_predictions.csv}. It also plots the proportions of the predicted classes. Keeping the original predictors beside the prediction makes the generated file easier to audit and debug.
+Once validation is complete, each fitted model predicts the unlabeled test set. The notebooks preserve the original test predictors, append \texttt{predicted\_class}, and save separate files: \texttt{data/decision\_tree\_test\_predictions.csv} and \texttt{data/logistic\_regression\_test\_predictions.csv}. Each also plots the predicted-class proportions. Keeping the original predictors beside the predictions makes the generated files easier to audit.
 
 \section{Limitations and future work}
 
-This phase now uses five-fold cross-validation for the tree, but it still evaluates only one tree configuration and one model family. The cross-validation standard deviations quantify variation across the five folds, but they are not a substitute for comparing alternative algorithms or configurations. Future work should use the same five-fold protocol for model comparison, hyperparameter choices, feature selection, and threshold selection, as required by the assignment. It should fit logistic regression and an Explainable Boosting Machine in addition to the tree, and report class-specific error costs if false negatives and false positives are unequal.
+The current comparison includes a tree and logistic regression, but its grid-search scores are selection results and should not be treated as independent estimates. Future work should add the Explainable Boosting Machine, compare all three families under the same protocol, and assess threshold choices and class-specific error costs when false negatives and false positives are unequal. The tuned logistic results should also be supplemented with class-specific hold-out metrics when reporting the final model comparison.
 
 The notebook already preserves sex as an audit attribute, but it does not yet calculate group-wise performance or fairness measures. A subsequent phase should compare error rates across relevant groups, inspect feature-importance stability, and use local explanations for the same representative instances across all three model families, including at least one instance from each class. Any such analysis should be performed without using the test labels.
 
 \section{Discussion}
 
-The tree is attractive for an initial explainability exercise because its rules can be communicated directly and its global explanation is easy to inspect. While the initial default model suffered from extreme predictive asymmetry, incorporating hyperparameter optimization (\texttt{GridSearchCV}) significantly improved the balance, raising balanced accuracy and class-1 recall.
+The tree is attractive because its rules can be communicated directly, while the logistic model provides an additive explanation through its coefficients. On the shared validation split, logistic regression achieves higher balanced accuracy than the tree after class-weighted tuning, but at lower accuracy. This reinforces the need to choose a model using the class-specific costs of errors rather than accuracy alone. Both tuned models improve on their majority-class-biased defaults, although the logistic model's default class-1 recall is almost zero.
 
 Interpretability also has a cost. A fully expanded tree can become a long and repetitive list of rules, making individual paths technically transparent but difficult to understand. Limiting the depth to 5 not only improved the balanced accuracy but also restricted the tree size, making the global and local explanations much more understandable. The same trade-off should be assessed for logistic regression coefficients and additive feature-effect plots rather than assuming that one explanation format is universally superior.
 
 \section{Conclusion}
 
-Phase I establishes a reproducible pipeline from raw credit and repayment data to an interpretable tree and a test prediction file. With hyperparameter tuning, the tree reaches 0.813 accuracy and 0.609 balanced accuracy, with 0.26 recall for payment difficulty. While the majority-class behavior is still present, the optimized tree shows a noticeable improvement. The next phase should broaden the comparison to the three required model families and align model selection with the cost of missing customers who will experience payment difficulty.
+The decision-tree and logistic-regression phases establish a reproducible pipeline from raw credit and repayment data to interpretable models and separate test prediction files. On the hold-out split, the tuned tree reaches 0.813 accuracy and 0.609 balanced accuracy, while tuned logistic regression reaches 0.713 accuracy and 0.680 balanced accuracy. The tree is more accurate overall; the logistic model is more balanced across classes. Adding the Explainable Boosting Machine and considering the cost of missed payment-difficulty cases are necessary before selecting a final model.
 
 \section{Use of generative AI}
 
