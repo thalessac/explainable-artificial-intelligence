@@ -16,3 +16,7 @@ main.blg
 *.snm
 *.toc
 __pycache__/
+Inteligencia Artificial Explicable\Tema 2 - trabajo práctico\examples*
+ebm.ipynb
+logistic-regression.ipynb
+tree.ipynb

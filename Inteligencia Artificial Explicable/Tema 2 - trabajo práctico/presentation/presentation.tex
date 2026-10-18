@@ -33,7 +33,7 @@
 \vspace{-0.6em}
 \textbf{Task.} Predict next-month payment difficulty (21\,\% positives; 25k labelled clients, 15 predictors).
 
-\textbf{Protocol.} 80/20 development/hold-out split. \emph{Every} choice (hyperparameters, log transform, threshold) is made with the \emph{same} 5 CV folds; the hold-out set is used once for confirmation.
+\textbf{Protocol.} 80/20 training/validation split. \emph{Every} choice (hyperparameters, log transform, threshold) is made with the \emph{same} 5 CV folds; the validation set is used once for confirmation.
 \begin{itemize}\setlength\itemsep{0pt}
 \item Tuning by CV AUC; one-SE rule $\Rightarrow$ simplest model
 \item No class weights: CV-chosen thresholds $t_{\text{acc}}\approx0.5$ (submission), $t_{\text{bal}}\approx0.2$ (analysis)

@@ -58,19 +58,19 @@
 
 \textbf{Problem.} We predict \var{payment_difficulty_next_month}, a semi-synthetic indicator of whether a credit-card client has payment difficulty in the following month. The data derive from the \emph{Default of Credit Card Clients} data set \citep{yeh2009comparisons} and contain 25{,}000 labelled and 5{,}000 unlabelled clients described by 15 predictors: credit limit, four demographic fields (recorded sex, education, marital status, age), eight six-month behavioural summaries (repayment status and delays, bills, payments, the payment-to-bill ratio, zero-payment months, utilization) and whether the lender recorded a repayment-assistance plan. There are no missing values. The target is imbalanced: 21.2\,\% of clients are positive, so always predicting ``no difficulty'' already achieves 78.8\,\% accuracy.
 
-\textbf{Strategy.} The goal is to understand \emph{what} each model learns and \emph{where explanations disagree}, as well as to predict well. We fit the three mandatory model families --- a decision tree, logistic regression (LR) and an Explainable Boosting Machine (EBM) --- under one protocol: identical preprocessing logic, the same five cross-validation (CV) folds for every decision, the same hold-out set and the same four local instances. On top of each model's native explanation we add three model-agnostic comparisons: (i) permutation importance on a common scale, (ii) per-variable effect curves on the log-odds scale and (iii) additive log-odds decompositions of individual predictions.
+\textbf{Strategy.} The goal is to understand \emph{what} each model learns and \emph{where explanations disagree}, as well as to predict well. We fit the three mandatory model families --- a decision tree, logistic regression (LR) and an Explainable Boosting Machine (EBM) --- under one protocol: identical preprocessing logic, the same five cross-validation (CV) folds for every decision, the same validation set and the same four local instances. On top of each model's native explanation we add three model-agnostic comparisons: (i) permutation importance on a common scale, (ii) per-variable effect curves on the log-odds scale and (iii) additive log-odds decompositions of individual predictions.
 
 \textbf{Main findings.}
 (1)~The EBM is the best model on every metric. Its five-fold CV AUC of 0.776 exceeds LR (0.761) and the tree (0.752) in all five folds, and it also beats an untuned gradient-boosting black box (0.768), so interpretability costs nothing here.
-(2)~The differences are modest in absolute terms (balanced accuracy 0.69--0.71 at a CV-chosen threshold), and the three models agree on 87\,\% of hold-out decisions.
+(2)~The differences are modest in absolute terms (balanced accuracy 0.69--0.71 at a CV-chosen threshold), and the three models agree on 87\,\% of validation decisions.
 (3)~The models agree that recent repayment behaviour --- the latest repayment status, the payment-to-bill ratio, and delayed and zero-payment months --- drives risk. They disagree on \emph{which} correlated variables carry this signal and on the \emph{shape} of the effects. The EBM finds strongly non-linear patterns: a U-shaped payment-ratio effect, a U-shaped age effect and a threshold in zero-payment months. LR cannot represent these, and the tree captures them only coarsely. These shape differences explain the local cases in which the models contradict each other.
 (4)~We submit the EBM's predictions for \texttt{test.csv}.
 
 % ---------------------------------------------------------------------------
 \section{Method}
 
-\subsection{Validation protocol}
-The labelled data are split once into an 80\,\% \emph{development} set (20{,}000 rows) and a 20\,\% \emph{hold-out} set (5{,}000 rows), stratified by the target with seed 411. All decisions --- model comparison, hyperparameters, feature transformations and classification thresholds --- use the \emph{same} five stratified folds of the development set, as the assignment requires. Because all models share the folds, differences can be checked fold by fold (paired comparison). The hold-out set is used once, after every choice is fixed, to confirm the CV estimates and to supply unseen instances for local explanation. The unlabelled test set is never used for fitting or selection. The submitted model is refit with its fixed settings on all 25{,}000 labelled rows.
+\subsection{Evaluation protocol}
+The labelled data are split once into an 80\,\% \emph{training} set (20{,}000 rows) and a 20\,\% \emph{validation} set (5{,}000 rows), stratified by the target with seed 411. All decisions --- model comparison, hyperparameters, feature transformations and classification thresholds --- use the \emph{same} five stratified folds of the training set, as the assignment requires. Because all models share the folds, differences can be checked fold by fold (paired comparison). The validation set is used once, after every choice is fixed, to confirm the CV estimates and to supply unseen instances for local explanation. The unlabelled test set is never used for fitting or selection. The submitted model is refit with its fixed settings on all 25{,}000 labelled rows.
 
 \subsection{Selection criteria and threshold choice}
 Hyperparameters are chosen by \textbf{CV ROC AUC}. AUC is threshold-free, so it separates \emph{how well a model ranks clients} from \emph{where the decision boundary is placed}. We deliberately do not use class weights. Instead, all three families produce unweighted, approximately calibrated probabilities, and the class imbalance is handled by choosing the threshold with CV. For each model we pool its out-of-fold probabilities and select two thresholds on a 0.01 grid:
@@ -92,8 +92,8 @@ For the tree and LR we also apply the \textbf{one-standard-error rule}: among co
 \subsection{Tools for comparing explanations}
 The native explanations of the three families --- splits, coefficients and shape functions --- are not on a common scale, so we add three comparisons that are:
 \begin{enumerate}\setlength\itemsep{0pt}
-\item \textbf{Permutation importance} \citep{breiman2001random}: the drop in hold-out AUC when one original variable is shuffled (10 repetitions), computed identically for every model.
-\item \textbf{Effect curves}: for each model, the variable is set to each grid value in 1{,}000 development rows and the mean log-odds is recorded and centred (a partial-dependence curve on the log-odds scale; \citealp{molnar2022interpretable}). For the additive models this recovers their exact per-variable effect.
+\item \textbf{Permutation importance} \citep{breiman2001random}: the drop in validation AUC when one original variable is shuffled (10 repetitions), computed identically for every model.
+\item \textbf{Effect curves}: for each model, the variable is set to each grid value in 1{,}000 training rows and the mean log-odds is recorded and centred (a partial-dependence curve on the log-odds scale; \citealp{molnar2022interpretable}). For the additive models this recovers their exact per-variable effect.
 \item \textbf{Local log-odds decompositions}: for the EBM, the shape-function values; for LR, coefficient $\times$ standardized value (relative to an average client in the reference categories); for the tree, the change in node log-odds produced by each split on the decision path \citep{saabas2014interpreting}. All three add up to the model's log-odds, so the bars are directly comparable.
 \end{enumerate}
 
@@ -103,7 +103,7 @@ The native explanations of the three families --- splits, coefficients and shape
 \begin{table}[ht]
 \centering
 \small
-\caption{Five-fold CV results on the development set (mean $\pm$ standard deviation over the same five folds). AUC and Brier score do not depend on a threshold. Accuracy is measured at $t_{\text{acc}}$; balanced accuracy and class-1 recall at $t_{\text{bal}}$. Both thresholds are chosen on out-of-fold predictions. Best mandatory model in bold; the last two rows are references.}
+\caption{Five-fold CV results on the training set (mean $\pm$ standard deviation over the same five folds). AUC and Brier score do not depend on a threshold. Accuracy is measured at $t_{\text{acc}}$; balanced accuracy and class-1 recall at $t_{\text{bal}}$. Both thresholds are chosen on out-of-fold predictions. Best mandatory model in bold; the last two rows are references.}
 \label{tab:summary}
 \setlength{\tabcolsep}{5pt}
 \begin{tabular}{@{}p{5.7cm}ccccc@{}}
@@ -128,16 +128,16 @@ Classifier and key settings & AUC & Brier & Accuracy & Bal.\ acc. & Recall$_1$ \
 \begin{figure}[ht]
 \centering
 \includegraphics[width=\linewidth]{figures/performance_overview.pdf}
-\caption{Left: hold-out ROC curves, which nearly overlap; the tree's curve is piecewise linear because it outputs only 17 distinct probabilities. Right: CV AUC of the best tree at each depth (whiskers: $\pm1$ standard error; labels: number of leaves), compared with the selected LR, EBM and black-box models. The star marks the selected 17-leaf tree.}
+\caption{Left: validation ROC curves, which nearly overlap; the tree's curve is piecewise linear because it outputs only 17 distinct probabilities. Right: CV AUC of the best tree at each depth (whiskers: $\pm1$ standard error; labels: number of leaves), compared with the selected LR, EBM and black-box models. The star marks the selected 17-leaf tree.}
 \label{fig:performance}
 \end{figure}
 
-\textbf{Hold-out confirmation.} On the untouched 5{,}000 hold-out clients, with all settings fixed, the results match CV (Table~\ref{tab:holdout}). The EBM again leads in AUC, Brier score, accuracy and balanced accuracy, and every hold-out value lies within about one fold standard deviation of its CV estimate. The optimism from choosing thresholds on out-of-fold data is therefore negligible.
+\textbf{Confirmation on the validation set.} On the untouched 5{,}000 validation clients, with all settings fixed, the results match CV (Table~\ref{tab:holdout}). The EBM again leads in AUC, Brier score, accuracy and balanced accuracy, and every value on the validation set lies within about one fold standard deviation of its CV estimate. The optimism from choosing thresholds on out-of-fold data is therefore negligible.
 
 \begin{table}[ht]
 \centering
 \small
-\caption{Hold-out results (5{,}000 clients) with models fitted on the development set and CV-chosen thresholds. Agreement is the share of identical decisions at $t_{\text{bal}}$ for each pair of models, with Cohen's $\kappa$ in brackets.}
+\caption{Validation-set results (5{,}000 clients) with models fitted on the training set and CV-chosen thresholds. Agreement is the share of identical decisions at $t_{\text{bal}}$ for each pair of models, with Cohen's $\kappa$ in brackets.}
 \label{tab:holdout}
 \begin{tabular}{@{}lcccccc@{}}
 \toprule
@@ -166,12 +166,12 @@ The root split (Figure~\ref{fig:tree}) separates clients who are currently behin
 \label{fig:tree}
 \end{figure}
 
-\textbf{From tree to rule set.} At the operating threshold only the predicted class of each leaf matters, so sibling leaves that end in the same class can be merged without changing a single prediction. Collapsing such subtrees turns the 17 leaves into \textbf{9 rules, of which only 6 predict difficulty} (Table~\ref{tab:rules}). For example, the five leaves under ``behind on payments and paid at most 9.5\,\% of the bills'' all predict difficulty and merge into rule R1. The rule set reads: \emph{flag the client if any rule fires}. R1 alone covers 15\,\% of clients and captures 39\,\% of all difficulties (development balanced accuracy 0.649). Adding rules in order of risk raises balanced accuracy to 0.686 with four rules and 0.698 with all six, so a two- or three-rule version would trade a few points of recall for an explanation that fits on one line.
+\textbf{From tree to rule set.} At the operating threshold only the predicted class of each leaf matters, so sibling leaves that end in the same class can be merged without changing a single prediction. Collapsing such subtrees turns the 17 leaves into \textbf{9 rules, of which only 6 predict difficulty} (Table~\ref{tab:rules}). For example, the five leaves under ``behind on payments and paid at most 9.5\,\% of the bills'' all predict difficulty and merge into rule R1. The rule set reads: \emph{flag the client if any rule fires}. R1 alone covers 15\,\% of clients and captures 39\,\% of all difficulties (balanced accuracy 0.649 on the training set). Adding rules in order of risk raises balanced accuracy to 0.686 with four rules and 0.698 with all six, so a two- or three-rule version would trade a few points of recall for an explanation that fits on one line.
 
 \begin{table}[ht]
 \centering
 \small
-\caption{The tree as an unordered rule set: predict difficulty if any of R1--R6 fires, otherwise predict no difficulty. Risk is the leaf's share of positives on the development set; coverage is its share of development clients.}
+\caption{The tree as an unordered rule set: predict difficulty if any of R1--R6 fires, otherwise predict no difficulty. Risk is the leaf's share of positives on the training set; coverage is its share of training clients.}
 \label{tab:rules}
 \begin{tabularx}{\linewidth}{@{}l>{\raggedright\arraybackslash}Xcc@{}}
 \toprule
@@ -212,7 +212,7 @@ The EBM's shape functions (Figure~\ref{fig:ebm}) show the non-linear structure t
 \begin{itemize}\setlength\itemsep{0pt}
 \item \textbf{Payment-to-bill ratio} is the most important term, and its effect is \textbf{U-shaped}. Paying almost nothing raises the log-odds by up to $+0.7$, and risk is lowest for ratios of about 0.5--1.2 (empirical rate 8\,\%). Above about 1.7 the contribution jumps back to $+0.4$. This small group (2\,\% of clients, rate 22\,\%) corresponds to the catch-up payments and tiny or negative bills that the data dictionary describes.
 \item \textbf{Repayment status} is flat across the non-positive codes and rises in steps from code 1 onwards. The model does not impose an order on the undocumented negative codes.
-\item \textbf{Zero-payment months} are \emph{protective} at 1--2 months and harmful from 3 onwards, ending at $+0.84$ for six months. One missed payment does not mean the same as repeated ones, as the data dictionary anticipates.
+\item \textbf{Zero-payment months} are \emph{protective} at 1--2 months and harmful from 3 onwards, ending at $+0.84$ for six months. One missed payment does not mean the same as repeated ones, as the data dictionary anticipates. To test whether the dip is real, we edited the model as in the course lab: \texttt{monotonize} forces the term to be increasing. Applied inside each CV fold, this lowers the pooled out-of-fold AUC from 0.7756 to 0.7728, so the dip carries signal and we keep the learned shape.
 \item \textbf{Age} is U-shaped: under 25 contributes $+0.58$ and over 57 about $+0.4$, while ages 30--55 are slightly protective.
 \item \textbf{Utilization} increases almost linearly up to 1.0 and jumps for over-limit accounts above about 1.4 (rate 49\,\%).
 \item The \textbf{assistance plan} adds $+0.41$ against $-0.11$ without a plan.
@@ -238,7 +238,7 @@ The rank correlations of the importances are 0.85 (tree--EBM), 0.73 (LR--EBM) an
 \begin{figure}[ht]
 \centering
 \includegraphics[width=0.72\linewidth]{figures/permutation_importance.pdf}
-\caption{Permutation importance on the hold-out set: mean decrease in AUC over 10 shuffles of each original variable, computed identically for the three models.}
+\caption{Permutation importance on the validation set: mean decrease in AUC over 10 shuffles of each original variable, computed identically for the three models.}
 \label{fig:perm}
 \end{figure}
 
@@ -259,7 +259,7 @@ The tree's effects are coarse step functions; LR's are straight lines by constru
 \end{figure}
 
 \subsection{Local comparison: four clients, three explanations}
-We selected four hold-out clients by fixed rules, using each model's $t_{\text{bal}}$ decision (Table~\ref{tab:local}):
+We selected four validation clients by fixed rules, using each model's $t_{\text{bal}}$ decision (Table~\ref{tab:local}):
 \begin{itemize}\setlength\itemsep{0pt}
 \item A and B are the most typical clients of each class on which all three models are correct (EBM probability closest to its group median).
 \item C and D are the clients of each class on which the models disagree most (largest spread of log-odds).
@@ -269,7 +269,7 @@ Figure~\ref{fig:local} decomposes every prediction into log-odds contributions.
 \begin{table}[ht]
 \centering
 \small
-\caption{Local cases from the hold-out set: key predictor values, predicted probability of difficulty and decision at $t_{\text{bal}}$ (\textbf{1}\,=\,flagged). Decisions that are wrong are marked with $\times$.}
+\caption{Local cases from the validation set: key predictor values, predicted probability of difficulty and decision at $t_{\text{bal}}$ (\textbf{1}\,=\,flagged). Decisions that are wrong are marked with $\times$.}
 \label{tab:local}
 \footnotesize
 \setlength{\tabcolsep}{4.5pt}
@@ -303,12 +303,12 @@ D & CR26-125976 & 0 & 0 & 0 & 0.21 & 0 & 2.00 & 42 & no & .06 (0) / .39 (\textbf
 These conflicts are informative rather than embarrassing. They show where each model's inductive bias matters: the tree's hard thresholds, LR's linearity and the EBM's freedom in sparse regions. They also show that a local explanation is only as trustworthy as the global shape behind it.
 
 \subsection{Subgroup audit by recorded sex}
-On the hold-out set at $t_{\text{bal}}$, the observed difficulty rates are 20.5\,\% (female, $n=3029$) and 22.3\,\% (male, $n=1971$). For all three models the gaps between groups in flag rate (at most 0.9 points), true-positive rate (1.8--2.1 points, slightly higher for women) and false-positive rate (0.2--0.8 points) are small. Sex has zero permutation importance in every model, and its EBM term is the least important of the fifteen. As the data dictionary stresses, similar error rates alone do not establish fairness; this is a descriptive check only.
+On the validation set at $t_{\text{bal}}$, the observed difficulty rates are 20.5\,\% (female, $n=3029$) and 22.3\,\% (male, $n=1971$). For all three models the gaps between groups in flag rate (at most 0.9 points), true-positive rate (1.8--2.1 points, slightly higher for women) and false-positive rate (0.2--0.8 points) are small. Sex has zero permutation importance in every model, and its EBM term is the least important of the fifteen. As the data dictionary stresses, similar error rates alone do not establish fairness; this is a descriptive check only.
 
 % ---------------------------------------------------------------------------
 \section{Discussion}
 
-\textbf{Performance.} The three glass-box models are close (CV AUC 0.752--0.776), yet the ordering is consistent in every fold and on the hold-out set. The EBM gains most from its non-linear shapes for the payment ratio, zero-payment months and age, and LR gains about 0.012 AUC from the log transform of monetary variables, which is a manual version of the same idea. That the EBM \emph{outperforms} the untuned gradient-boosting reference supports the argument that, for tabular data with meaningful features, an interpretable model need not be less accurate \citep{rudin2019stop,caruana2015intelligible}. A tuned black box might gain a little, but the gap would have to justify losing a model whose every term can be inspected. Absolute performance is moderate (about 60\,\% of difficulties detected at a false-positive rate of about 21\,\% on the hold-out set), which reflects how much signal six months of behaviour contain rather than a weakness of any family.
+\textbf{Performance.} The three glass-box models are close (CV AUC 0.752--0.776), yet the ordering is consistent in every fold and on the validation set. The EBM gains most from its non-linear shapes for the payment ratio, zero-payment months and age, and LR gains about 0.012 AUC from the log transform of monetary variables, which is a manual version of the same idea. That the EBM \emph{outperforms} the untuned gradient-boosting reference supports the argument that, for tabular data with meaningful features, an interpretable model need not be less accurate \citep{rudin2019stop,caruana2015intelligible}. A tuned black box might gain a little, but the gap would have to justify losing a model whose every term can be inspected. Absolute performance is moderate (about 60\,\% of difficulties detected at a false-positive rate of about 21\,\% on the validation set), which reflects how much signal six months of behaviour contain rather than a weakness of any family.
 
 \textbf{Interpretability (subjective).}
 \begin{itemize}\setlength\itemsep{0pt}
@@ -323,14 +323,14 @@ In our judgement the EBM offers the best balance. The tree's rule set remains th
 \textbf{What could be improved.}
 \begin{enumerate}\setlength\itemsep{0pt}
 \item \emph{Rule list}: our 6-rule set is exact but still contains near-duplicate conditions. For example, R4 and R6 differ only in age and the plan, and R3 and R5 share their first two conditions. A dedicated rule-list learner (e.g.\ CORELS or a greedy rule list from \texttt{imodels}) could produce an ordered list with fewer, shorter rules.
-\item \emph{EBM}: allowing a few pairwise interactions (the tree suggests status~$\times$~ratio) would test whether the additive assumption costs accuracy. Monotonicity constraints or manual editing of shape functions could remove implausible jumps in sparse tails (very old ages, high total payments).
+\item \emph{EBM}: allowing a few pairwise interactions (the tree suggests status~$\times$~ratio) would test whether the additive assumption costs accuracy. Our monotonization test shows that such edits should be checked with CV rather than imposed by intuition: the dip in zero-payment months looked implausible but was real. Editing could still be justified for jumps in sparse tails (very old ages, high total payments), where the bands are wide.
 \item \emph{LR}: binning or spline features for the payment ratio, repayment status and zero-payment months would let a linear model capture the shapes the EBM revealed, at the price of more coefficients.
-\item \emph{Protocol}: nested CV would remove the small optimism of selecting hyperparameters and thresholds on the same folds. The hold-out results suggest this optimism is negligible here.
+\item \emph{Protocol}: nested CV would remove the small optimism of selecting hyperparameters and thresholds on the same folds. The validation results suggest this optimism is negligible here.
 \end{enumerate}
 
 % ---------------------------------------------------------------------------
 \section{Conclusion}
-We built, tuned and interpreted a decision tree, logistic regression and an EBM under one CV protocol that covers model comparison, hyperparameters, a feature transformation and the classification threshold, and we confirmed the results on an untouched hold-out set. The EBM is the most accurate model (CV AUC 0.776, accuracy 0.817, balanced accuracy 0.705) and matches or beats a black-box reference. We therefore submit its predictions, refit on all labelled data with the accuracy-maximizing threshold 0.49; it flags 10.0\,\% of test clients and agrees with the other two families on 96--97\,\% of them.
+We built, tuned and interpreted a decision tree, logistic regression and an EBM under one CV protocol that covers model comparison, hyperparameters, a feature transformation and the classification threshold, and we confirmed the results on an untouched validation set. The EBM is the most accurate model (CV AUC 0.776, accuracy 0.817, balanced accuracy 0.705) and matches or beats a black-box reference. We therefore submit its predictions, refit on all labelled data with the accuracy-maximizing threshold 0.49; it flags 10.0\,\% of test clients and agrees with the other two families on 96--97\,\% of them.
 
 The comparison showed that interpretability does not mean a single answer. The three models agree on the outcome for 87\,\% of clients and on the broad drivers (recent delays and low repayment). They differ on which correlated variable carries the signal and on the shape of its effect, and these differences explain the clients on which they disagree. Next steps are an ordered rule list, an EBM with selected interactions or monotone constraints, cost-sensitive thresholds agreed with domain experts, and a fuller fairness analysis that goes beyond descriptive error rates.
 
