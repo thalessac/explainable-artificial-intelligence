@@ -56,15 +56,13 @@
 % ---------------------------------------------------------------------------
 \section{Introduction}
 
-\textbf{Problem.} We predict \var{payment_difficulty_next_month}, a semi-synthetic indicator of whether a credit-card client has payment difficulty in the following month. The data derive from the \emph{Default of Credit Card Clients} data set \citep{yeh2009comparisons} and contain 25{,}000 labelled and 5{,}000 unlabelled clients described by 15 predictors: credit limit, four demographic fields (recorded sex, education, marital status, age), eight six-month behavioural summaries (repayment status and delays, bills, payments, the payment-to-bill ratio, zero-payment months, utilization) and whether the lender recorded a repayment-assistance plan. There are no missing values. The target is imbalanced: 21.2\,\% of clients are positive, so always predicting ``no difficulty'' already achieves 78.8\,\% accuracy.
+This project predicts whether a credit-card client will have payment difficulty in the following month (\var{payment_difficulty_next_month}). The data come from the \emph{Default of Credit Card Clients} data set \citep{yeh2009comparisons}, with a semi-synthetic target. There are 25{,}000 labelled and 5{,}000 unlabelled clients, each described by 15 predictors: the credit limit, four demographic fields (recorded sex, education, marital status and age), eight summaries of the last six months of repayments, bills and payments, and whether the lender recorded a repayment-assistance plan. There are no missing values. Only 21.2\,\% of clients have payment difficulty, so a model that always answers ``no difficulty'' is already right 78.8\,\% of the time. Accuracy alone is therefore a poor guide.
 
-\textbf{Strategy.} The goal is to understand \emph{what} each model learns and \emph{where explanations disagree}, as well as to predict well. We fit the three mandatory model families --- a decision tree, logistic regression (LR) and an Explainable Boosting Machine (EBM) --- under one protocol: identical preprocessing logic, the same five cross-validation (CV) folds for every decision, the same validation set and the same four local instances. On top of each model's native explanation we add three model-agnostic comparisons: (i) permutation importance on a common scale, (ii) per-variable effect curves on the log-odds scale and (iii) additive log-odds decompositions of individual predictions.
+For this reason we mainly compare models with the \textbf{AUC}. Each model gives every client a risk score between 0 and 1. The AUC answers a simple question: if we pick one client who had difficulty and one who did not, how often does the model give the higher score to the client who had difficulty? An AUC of 0.5 means the model is guessing, and 1.0 means it always ranks them correctly. The \textbf{ROC curve} is the picture behind this number: it shows how many clients in difficulty the model catches against how many false alarms it raises, for every possible cut-off on the score, and the AUC is the area under it. Because the AUC does not depend on any particular cut-off, we use it to compare and tune the models, and we choose the cut-off separately (Section~\ref{sec:thresholds}).
 
-\textbf{Main findings.}
-(1)~The EBM is the best model on every metric. Its five-fold CV AUC of 0.776 exceeds LR (0.761) and the tree (0.752) in all five folds, and it also beats an untuned gradient-boosting black box (0.768), so interpretability costs nothing here.
-(2)~The differences are modest in absolute terms (balanced accuracy 0.69--0.71 at a CV-chosen threshold), and the three models agree on 87\,\% of validation decisions.
-(3)~The models agree that recent repayment behaviour --- the latest repayment status, the payment-to-bill ratio, and delayed and zero-payment months --- drives risk. They disagree on \emph{which} correlated variables carry this signal and on the \emph{shape} of the effects. The EBM finds strongly non-linear patterns: a U-shaped payment-ratio effect, a U-shaped age effect and a threshold in zero-payment months. LR cannot represent these, and the tree captures them only coarsely. These shape differences explain the local cases in which the models contradict each other.
-(4)~We submit the EBM's predictions for \texttt{test.csv}.
+The goal is not only to predict well but also to understand what each model has learned and where their explanations disagree. We fit the three mandatory model families, a decision tree, logistic regression (LR) and an Explainable Boosting Machine (EBM), under the same protocol: the same preprocessing logic, the same five cross-validation (CV) folds for every decision, the same validation set and the same four clients for local explanations. We then compare their explanations both globally and for those individual clients.
+
+The EBM turns out to be the best model. Its CV AUC of 0.776 is higher than that of LR (0.761) and the tree (0.752) in all five folds, and it even beats a black-box gradient-boosting model (0.768), so here interpretability costs nothing. The differences are modest, though, and the three models make the same decision for 87\,\% of the validation clients. All three agree that recent repayment behaviour drives the risk: the latest repayment status, the share of the bill that was paid, and the number of months with delays or with no payment. They disagree on which of these related variables carries the signal, and on the shape of the effects. The EBM finds clearly non-linear patterns, such as a U-shaped effect of the payment-to-bill ratio and of age, which LR cannot represent and the tree captures only roughly. These differences explain the clients on which the models contradict each other. We submit the EBM's predictions for \texttt{test.csv}.
 
 % ---------------------------------------------------------------------------
 \section{Method}
@@ -73,12 +71,29 @@
 The labelled data are split once into an 80\,\% \emph{training} set (20{,}000 rows) and a 20\,\% \emph{validation} set (5{,}000 rows), stratified by the target with seed 411. All decisions --- model comparison, hyperparameters, feature transformations and classification thresholds --- use the \emph{same} five stratified folds of the training set, as the assignment requires. Because all models share the folds, differences can be checked fold by fold (paired comparison). The validation set is used once, after every choice is fixed, to confirm the CV estimates and to supply unseen instances for local explanation. The unlabelled test set is never used for fitting or selection. The submitted model is refit with its fixed settings on all 25{,}000 labelled rows.
 
 \subsection{Selection criteria and threshold choice}
-Hyperparameters are chosen by \textbf{CV ROC AUC}. AUC is threshold-free, so it separates \emph{how well a model ranks clients} from \emph{where the decision boundary is placed}. We deliberately do not use class weights. Instead, all three families produce unweighted, approximately calibrated probabilities, and the class imbalance is handled by choosing the threshold with CV. For each model we pool its out-of-fold probabilities and select two thresholds on a 0.01 grid:
+\label{sec:thresholds}
+Hyperparameters are chosen by \textbf{CV ROC AUC}. For the tree and LR we also apply the \textbf{one-standard-error rule}: among configurations whose CV AUC lies within one standard error of the best, we keep the simplest (the shallowest tree, then the largest leaves; the strongest regularization). In an interpretability project we prefer the smaller model whenever the data cannot distinguish the two.
+
+\textbf{Thresholds.} For each model, every training client receives an \emph{out-of-fold} probability $\hat p_i$: the prediction of the model trained on the other four folds. For a threshold $t$ the predicted class is $\hat y_i(t)=\mathbb{1}[\hat p_i \geq t]$, which gives the counts TP$(t)$, TN$(t)$, FP$(t)$ and FN$(t)$ over all $n=20{,}000$ training clients. We evaluate
+\[
+\operatorname{Acc}(t)=\frac{\mathrm{TP}(t)+\mathrm{TN}(t)}{n},
+\qquad
+\operatorname{BA}(t)=\frac{1}{2}\left(\frac{\mathrm{TP}(t)}{\mathrm{TP}(t)+\mathrm{FN}(t)}+\frac{\mathrm{TN}(t)}{\mathrm{TN}(t)+\mathrm{FP}(t)}\right)
+\]
+on the grid $T=\{0.05, 0.06, \dots, 0.95\}$ and take
+\[
+t_{\text{acc}}=\arg\max_{t\in T}\operatorname{Acc}(t),
+\qquad
+t_{\text{bal}}=\arg\max_{t\in T}\operatorname{BA}(t).
+\]
+Balanced accuracy (BA) is the mean of the recall of each class, so both classes count equally whatever their size. $t_{\text{acc}}$ is used for the submitted test predictions, because the test set is graded on accuracy. $t_{\text{bal}}$ is our \emph{analysis operating point}, because missing a client in difficulty and raising a false alarm should both count. All class-specific results and local cases use $t_{\text{bal}}$.
+
+\textbf{Why thresholds instead of class weights.} Class weights (e.g.\ \texttt{class\_weight="balanced"}) counter the imbalance during training by multiplying the loss of each positive client by about 3.7 ($=0.788/0.212$). We handle the imbalance with the threshold instead, for three reasons:
 \begin{itemize}\setlength\itemsep{0pt}
-\item $t_{\text{acc}}$, which maximizes accuracy. It is used for the submitted test predictions, since the test set is graded on accuracy.
-\item $t_{\text{bal}}$, which maximizes balanced accuracy, the mean of the two class recalls. It is our \emph{analysis operating point}, because missing a client in difficulty and raising a false alarm should both count. All class-specific results and local cases use $t_{\text{bal}}$.
+\item \emph{One mechanism for all three families.} Reweighting acts differently on each model: in LR it mainly shifts the intercept, which is almost the same as lowering the threshold, while in the tree and the EBM it also changes which splits and shapes are learned. Moving only the threshold keeps the comparison about the models themselves.
+\item \emph{Probabilities keep their meaning.} Without weights, a predicted 0.3 corresponds to roughly 30\,\% observed difficulty, and the model's base value (tree root, LR intercept, EBM intercept) reflects the real 21\,\% rate. The local explanations in Section~\ref{sec:local} therefore describe contributions to the real risk. Weighted models inflate all probabilities, so these numbers would no longer have that reading.
+\item \emph{One model, two goals.} The same fitted model serves both the accuracy-graded submission ($t_{\text{acc}}$) and the balanced analysis ($t_{\text{bal}}$); only $t$ changes, and $t$ itself is chosen by CV as the assignment requires.
 \end{itemize}
-For the tree and LR we also apply the \textbf{one-standard-error rule}: among configurations whose CV AUC lies within one standard error of the best, we keep the simplest (the shallowest tree, then the largest leaves; the strongest regularization). In an interpretability project we prefer the smaller model whenever the data cannot distinguish the two. This choice also corrects a flaw in our Phase~I submission, where the CV score came from a class-weighted search estimator that differed from the reported tree.
 
 \subsection{The three classifiers}
 \textbf{Decision tree} (\texttt{DecisionTreeClassifier}, CART; \citealp{breiman1984classification}). Categorical predictors are one-hot encoded; numerical predictors keep their original units, because splits are invariant to monotone transformations and raw thresholds are easier to read. We searched \texttt{max\_depth} $\in\{2,\dots,8,10\}$ and \texttt{min\_samples\_leaf} $\in\{25,50,100,200,400\}$, the two parameters that directly control how many rules a reader must follow. CV AUC rises up to depth~5 and then plateaus (Figure~\ref{fig:performance}, right). The best configuration (depth~5, leaves $\geq 25$; 32 leaves; AUC 0.755) and the one-SE choice (depth~5, leaves $\geq 400$; \textbf{17 leaves}; AUC 0.752) are statistically indistinguishable, so we keep the tree with half as many leaves. Deeper trees add leaves without gaining AUC.
@@ -103,27 +118,27 @@ The native explanations of the three families --- splits, coefficients and shape
 \begin{table}[ht]
 \centering
 \small
-\caption{Five-fold CV results on the training set (mean $\pm$ standard deviation over the same five folds). AUC and Brier score do not depend on a threshold. Accuracy is measured at $t_{\text{acc}}$; balanced accuracy and class-1 recall at $t_{\text{bal}}$. Both thresholds are chosen on out-of-fold predictions. Best mandatory model in bold; the last two rows are references.}
+\caption{Five-fold CV results on the training set (mean $\pm$ standard deviation over the same five folds). AUC does not depend on a threshold. Accuracy is measured at $t_{\text{acc}}$; balanced accuracy and class-1 recall at $t_{\text{bal}}$. Both thresholds are chosen on out-of-fold predictions. Best mandatory model in bold; the last two rows are references.}
 \label{tab:summary}
 \setlength{\tabcolsep}{5pt}
-\begin{tabular}{@{}p{5.7cm}ccccc@{}}
+\begin{tabular}{@{}p{6.4cm}cccc@{}}
 \toprule
-Classifier and key settings & AUC & Brier & Accuracy & Bal.\ acc. & Recall$_1$ \\
- & & & [$t_{\text{acc}}$] & [$t_{\text{bal}}$] & [$t_{\text{bal}}$] \\
+Classifier and key settings & AUC & Accuracy & Bal.\ acc. & Recall$_1$ \\
+ & & [$t_{\text{acc}}$] & [$t_{\text{bal}}$] & [$t_{\text{bal}}$] \\
 \midrule
-\texttt{DecisionTreeClassifier}\newline {\footnotesize depth 5, min.\ leaf 400 (17 leaves); $t_{\text{acc}}=.49$, $t_{\text{bal}}=.18$} & .752\,$\pm$\,.011 & .139 & .812\,$\pm$\,.005 & .692\,$\pm$\,.009 & .650 \\[0.3em]
-\texttt{LogisticRegression}\newline {\footnotesize L2, $C=0.01$, standardized, signed-log money; $t_{\text{acc}}=.47$, $t_{\text{bal}}=.22$} & .761\,$\pm$\,.008 & .137 & .814\,$\pm$\,.008 & .695\,$\pm$\,.009 & .624 \\[0.3em]
-\texttt{ExplainableBoostingClassifier}\newline {\footnotesize \texttt{interactions=0}, 256 bins, min.\ leaf 50; $t_{\text{acc}}=.49$, $t_{\text{bal}}=.23$} & \textbf{.776}\,$\pm$\,.010 & \textbf{.134} & \textbf{.817}\,$\pm$\,.006 & \textbf{.705}\,$\pm$\,.008 & .624 \\
+\texttt{DecisionTreeClassifier}\newline {\footnotesize depth 5, min.\ leaf 400 (17 leaves); $t_{\text{acc}}=.49$, $t_{\text{bal}}=.18$} & .752\,$\pm$\,.011 & .812\,$\pm$\,.005 & .692\,$\pm$\,.009 & .650 \\[0.3em]
+\texttt{LogisticRegression}\newline {\footnotesize L2, $C=0.01$, standardized, signed-log money; $t_{\text{acc}}=.47$, $t_{\text{bal}}=.22$} & .761\,$\pm$\,.008 & .814\,$\pm$\,.008 & .695\,$\pm$\,.009 & .624 \\[0.3em]
+\texttt{ExplainableBoostingClassifier}\newline {\footnotesize \texttt{interactions=0}, 256 bins, min.\ leaf 50; $t_{\text{acc}}=.49$, $t_{\text{bal}}=.23$} & \textbf{.776}\,$\pm$\,.010 & \textbf{.817}\,$\pm$\,.006 & \textbf{.705}\,$\pm$\,.008 & .624 \\
 \midrule
-\texttt{DummyClassifier}\newline {\footnotesize majority class (chance level)} & .500 & .167 & .788 & .500 & .000 \\[0.3em]
-\texttt{HistGradientBoostingClassifier}\newline {\footnotesize black-box reference, default settings} & .768\,$\pm$\,.012 & .136 & .815\,$\pm$\,.006 & .701\,$\pm$\,.013 & .617 \\
+\texttt{DummyClassifier}\newline {\footnotesize majority class (chance level)} & .500 & .788 & .500 & .000 \\[0.3em]
+\texttt{HistGradientBoostingClassifier}\newline {\footnotesize black-box reference, default settings} & .768\,$\pm$\,.012 & .815\,$\pm$\,.006 & .701\,$\pm$\,.013 & .617 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \textbf{All three models clearly beat chance}: they exceed the majority-class accuracy of 0.788 and have balanced accuracy near 0.70 against the chance level of 0.50. The ranking EBM $>$ LR $>$ tree is the same for every metric. Because the folds are shared, we can confirm it fold by fold. The EBM's AUC exceeds LR's by $+0.014\pm0.004$ and the tree's by $+0.023\pm0.007$, in 5/5 folds each, and LR beats the tree in 5/5 folds. The black-box reference is \emph{worse} than the EBM in all five folds ($-0.007$).
 
-\textbf{Thresholds behave as theory predicts for calibrated models.} $t_{\text{acc}}$ lies near 0.5 (0.47--0.49). $t_{\text{bal}}$ lies near the positive rate (0.18--0.23), because for a calibrated model balanced accuracy is maximized by flagging clients whose risk exceeds the base rate. This also explains the large accuracy differences between our Phase~I/II runs, which used a fixed 0.5 threshold with or without class weights: those differences came from the operating point, not from the model families. At $t_{\text{acc}}$ the models flag only about 10\,\% of clients and detect about 30\,\% of difficulties; at $t_{\text{bal}}$ they flag about 30\,\% and detect about 62\,\%.
+\textbf{Thresholds behave as theory predicts for calibrated models.} $t_{\text{acc}}$ lies near 0.5 (0.47--0.49). $t_{\text{bal}}$ lies near the positive rate (0.18--0.23), because for a calibrated model balanced accuracy is maximized by flagging clients whose risk exceeds the base rate. At $t_{\text{acc}}$ the models flag only about 10\,\% of clients and detect about 30\,\% of difficulties; at $t_{\text{bal}}$ they flag about 30\,\% and detect about 62\,\%.
 
 \begin{figure}[ht]
 \centering
@@ -132,23 +147,23 @@ Classifier and key settings & AUC & Brier & Accuracy & Bal.\ acc. & Recall$_1$ \
 \label{fig:performance}
 \end{figure}
 
-\textbf{Confirmation on the validation set.} On the untouched 5{,}000 validation clients, with all settings fixed, the results match CV (Table~\ref{tab:holdout}). The EBM again leads in AUC, Brier score, accuracy and balanced accuracy, and every value on the validation set lies within about one fold standard deviation of its CV estimate. The optimism from choosing thresholds on out-of-fold data is therefore negligible.
+\textbf{Confirmation on the validation set.} On the untouched 5{,}000 validation clients, with all settings fixed, the results match CV (Table~\ref{tab:holdout}). The EBM again leads in AUC, accuracy and balanced accuracy, and every value on the validation set lies within about one fold standard deviation of its CV estimate. The optimism from choosing thresholds on out-of-fold data is therefore negligible.
 
 \begin{table}[ht]
 \centering
 \small
 \caption{Validation-set results (5{,}000 clients) with models fitted on the training set and CV-chosen thresholds. Agreement is the share of identical decisions at $t_{\text{bal}}$ for each pair of models, with Cohen's $\kappa$ in brackets.}
 \label{tab:holdout}
-\begin{tabular}{@{}lcccccc@{}}
+\begin{tabular}{@{}lccccc@{}}
 \toprule
-Model & AUC & Brier & Acc.\ [$t_{\text{acc}}$] & Bal.\ acc.\ [$t_{\text{bal}}$] & Recall$_1$ / Recall$_0$ & Flagged \\
+Model & AUC & Acc.\ [$t_{\text{acc}}$] & Bal.\ acc.\ [$t_{\text{bal}}$] & Recall$_1$ / Recall$_0$ & Flagged \\
 \midrule
-Decision tree & .749 & .138 & .814 & .688 & .597 / .779 & 30.1\,\% \\
-Logistic regression & .766 & .135 & .820 & .690 & .607 / .773 & 30.7\,\% \\
-EBM & \textbf{.775} & \textbf{.133} & \textbf{.825} & \textbf{.696} & .597 / .795 & 28.8\,\% \\
-Majority baseline & .500 & .167 & .788 & .500 & .000 / 1.000 & 0\,\% \\
+Decision tree & .749 & .814 & .688 & .597 / .779 & 30.1\,\% \\
+Logistic regression & .766 & .820 & .690 & .607 / .773 & 30.7\,\% \\
+EBM & \textbf{.775} & \textbf{.825} & \textbf{.696} & .597 / .795 & 28.8\,\% \\
+Majority baseline & .500 & .788 & .500 & .000 / 1.000 & 0\,\% \\
 \midrule
-\multicolumn{7}{@{}l}{Agreement: tree--LR 89.6\,\% [.76], tree--EBM 92.2\,\% [.81], LR--EBM 92.3\,\% [.82]; all three agree on 87.1\,\%.}\\
+\multicolumn{6}{@{}l}{Agreement: tree--LR 89.6\,\% [.76], tree--EBM 92.2\,\% [.81], LR--EBM 92.3\,\% [.82]; all three agree on 87.1\,\%.}\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -212,7 +227,7 @@ The EBM's shape functions (Figure~\ref{fig:ebm}) show the non-linear structure t
 \begin{itemize}\setlength\itemsep{0pt}
 \item \textbf{Payment-to-bill ratio} is the most important term, and its effect is \textbf{U-shaped}. Paying almost nothing raises the log-odds by up to $+0.7$, and risk is lowest for ratios of about 0.5--1.2 (empirical rate 8\,\%). Above about 1.7 the contribution jumps back to $+0.4$. This small group (2\,\% of clients, rate 22\,\%) corresponds to the catch-up payments and tiny or negative bills that the data dictionary describes.
 \item \textbf{Repayment status} is flat across the non-positive codes and rises in steps from code 1 onwards. The model does not impose an order on the undocumented negative codes.
-\item \textbf{Zero-payment months} are \emph{protective} at 1--2 months and harmful from 3 onwards, ending at $+0.84$ for six months. One missed payment does not mean the same as repeated ones, as the data dictionary anticipates. To test whether the dip is real, we edited the model as in the course lab: \texttt{monotonize} forces the term to be increasing. Applied inside each CV fold, this lowers the pooled out-of-fold AUC from 0.7756 to 0.7728, so the dip carries signal and we keep the learned shape.
+\item \textbf{Zero-payment months} are \emph{protective} at 1--2 months and harmful from 3 onwards, ending at $+0.84$ for six months. One missed payment does not mean the same as repeated ones, as the data dictionary anticipates. To test whether the dip is real, we edited the model: \texttt{monotonize} forces the term to be increasing. Applied inside each CV fold, this lowers the pooled out-of-fold AUC from 0.7756 to 0.7728, so the dip carries signal and we keep the learned shape.
 \item \textbf{Age} is U-shaped: under 25 contributes $+0.58$ and over 57 about $+0.4$, while ages 30--55 are slightly protective.
 \item \textbf{Utilization} increases almost linearly up to 1.0 and jumps for over-limit accounts above about 1.4 (rate 49\,\%).
 \item The \textbf{assistance plan} adds $+0.41$ against $-0.11$ without a plan.
@@ -233,7 +248,7 @@ The bands ($\pm1$ SD over the EBM's bagged fits) are narrow wherever data are de
 \item LR relies on total payment (0.073) and utilization (0.056) and barely uses the ratio (0.004).
 \item The EBM spreads importance across seven variables, none exceeding 0.032.
 \end{itemize}
-The rank correlations of the importances are 0.85 (tree--EBM), 0.73 (LR--EBM) and only 0.36 (tree--LR). This is a clear instance of the \emph{Rashomon effect}: several models of similar accuracy tell different stories because the payment variables are partly redundant (the ratio is a function of total payment and bills). A variable's importance is therefore a property of the model, not of the data. The EBM's smaller drops do not mean that it uses weaker signals: when one of its many inputs is shuffled, the others partly compensate.
+The rank correlations of the importances are 0.85 (tree--EBM), 0.73 (LR--EBM) and only 0.36 (tree--LR). This is an instance of the \emph{Rashomon effect} \citep{breiman2001statistical}: when several predictors carry overlapping information, many different models fit the data almost equally well, yet each relies on different variables and so tells a different story. Here the payment variables are partly redundant (the ratio is computed from total payment and bills), so each model picks its own carrier for the same signal. A variable's importance is therefore a property of the model, not of the data. The EBM's smaller drops do not mean that it uses weaker signals: when one of its many inputs is shuffled, the others partly compensate.
 
 \begin{figure}[ht]
 \centering
@@ -259,6 +274,7 @@ The tree's effects are coarse step functions; LR's are straight lines by constru
 \end{figure}
 
 \subsection{Local comparison: four clients, three explanations}
+\label{sec:local}
 We selected four validation clients by fixed rules, using each model's $t_{\text{bal}}$ decision (Table~\ref{tab:local}):
 \begin{itemize}\setlength\itemsep{0pt}
 \item A and B are the most typical clients of each class on which all three models are correct (EBM probability closest to its group median).
@@ -310,7 +326,7 @@ On the validation set at $t_{\text{bal}}$, the observed difficulty rates are 20.
 
 \textbf{Performance.} The three glass-box models are close (CV AUC 0.752--0.776), yet the ordering is consistent in every fold and on the validation set. The EBM gains most from its non-linear shapes for the payment ratio, zero-payment months and age, and LR gains about 0.012 AUC from the log transform of monetary variables, which is a manual version of the same idea. That the EBM \emph{outperforms} the untuned gradient-boosting reference supports the argument that, for tabular data with meaningful features, an interpretable model need not be less accurate \citep{rudin2019stop,caruana2015intelligible}. A tuned black box might gain a little, but the gap would have to justify losing a model whose every term can be inspected. Absolute performance is moderate (about 60\,\% of difficulties detected at a false-positive rate of about 21\,\% on the validation set), which reflects how much signal six months of behaviour contain rather than a weakness of any family.
 
-\textbf{Interpretability (subjective).}
+\textbf{Interpretability.}
 \begin{itemize}\setlength\itemsep{0pt}
 \item \emph{The tree} is the most \emph{simulatable} model: six rules can be applied by hand and explained to a client. It is also the coarsest. It outputs only 17 probability levels, ignores eight variables completely, and can be wrong in confidently explainable ways (case C).
 \item \emph{LR} is compact, with one number per variable and stable signs across folds. It is the easiest model to state but the easiest to misread: its coefficients are conditional, three of them reverse the marginal sign, and linearity imposes an ordering on undocumented codes.
