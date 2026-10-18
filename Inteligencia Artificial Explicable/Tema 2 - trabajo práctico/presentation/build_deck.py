@@ -1,6 +1,7 @@
 """Build the four-slide defense deck from the UPM template (presentation.pptx).
 
-Keeps template slides 7, 3, 4 and 5 (in that order), fills their placeholders keeping the template's formatting
+Keeps template slides 1 (cover), 7, 3, 4, 5 and 26 (closing), in that order, fills the placeholders keeping the
+template's formatting
 and puts the figures from make_slide_figures.py and the report into the picture slots.
 Run from this folder: python build_deck.py   ->  defense_slides.pptx
 """
@@ -16,17 +17,18 @@ FOOTER = "T. S. A. Camargo · J. Corrales Almendariz · J. Montes de Oca Martín
 
 prs = Presentation(TEMPLATE)
 
-# Keep template slides 7 (summary), 3 (tree), 4 (logistic regression) and 5 (EBM), in this order.
+# Keep the cover (1), the four content slides (7 summary, 3 tree, 4 logistic regression, 5 EBM) and the
+# closing slide (26), in this order.
 slide_ids = prs.slides._sldIdLst
 original = list(slide_ids)
-keep = [original[i - 1] for i in (7, 3, 4, 5)]
+keep = [original[i - 1] for i in (1, 7, 3, 4, 5, 26)]
 for element in original:
     slide_ids.remove(element)
     if element not in keep:
         prs.part.drop_rel(element.rId)
 for element in keep:
     slide_ids.append(element)
-summary, tree, logit, ebm = prs.slides
+cover, summary, tree, logit, ebm, closing = prs.slides
 
 
 def shape(slide, shape_id):
@@ -106,7 +108,7 @@ def set_dial(group, fraction):
     guides["adj1"].set("fmla", f"val {start}")
 
 
-for slide in prs.slides:
+for slide in (summary, tree, logit, ebm):  # the cover and closing slides have no footer
     footer = next(s for s in slide.placeholders if s.has_text_frame and s.text_frame.text == "Título del proyecto")
     set_text(footer, [FOOTER])
 

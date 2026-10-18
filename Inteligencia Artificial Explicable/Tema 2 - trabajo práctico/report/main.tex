@@ -14,6 +14,9 @@
 \usepackage{natbib}
 \usepackage{hyperref}
 \usepackage[expansion=false]{microtype}
+\usepackage{titlesec}
+\titlespacing*{\subsection}{0pt}{2.2ex plus .6ex minus .2ex}{0.8ex plus .2ex}
+\titlespacing*{\subsubsection}{0pt}{1.6ex plus .4ex minus .2ex}{0.5ex plus .1ex}
 
 \hypersetup{colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue, hypertexnames=false}
 \setlength{\parskip}{0.35em}
@@ -74,7 +77,8 @@ The labelled data are split once into an 80\,\% \emph{training} set (20{,}000 ro
 \label{sec:thresholds}
 Hyperparameters are chosen by \textbf{CV ROC AUC}. For the tree and LR we also apply the \textbf{one-standard-error rule}: among configurations whose CV AUC lies within one standard error of the best, we keep the simplest (the shallowest tree, then the largest leaves; the strongest regularization). In an interpretability project we prefer the smaller model whenever the data cannot distinguish the two.
 
-\textbf{Thresholds.} For each model, every training client receives an \emph{out-of-fold} probability $\hat p_i$: the prediction of the model trained on the other four folds. For a threshold $t$ the predicted class is $\hat y_i(t)=\mathbb{1}[\hat p_i \geq t]$, which gives the counts TP$(t)$, TN$(t)$, FP$(t)$ and FN$(t)$ over all $n=20{,}000$ training clients. We evaluate
+\subsubsection{Thresholds}
+For each model, every training client receives an \emph{out-of-fold} probability $\hat p_i$: the prediction of the model trained on the other four folds. For a threshold $t$ the predicted class is $\hat y_i(t)=\mathbb{1}[\hat p_i \geq t]$, which gives the counts TP$(t)$, TN$(t)$, FP$(t)$ and FN$(t)$ over all $n=20{,}000$ training clients. We evaluate
 \[
 \operatorname{Acc}(t)=\frac{\mathrm{TP}(t)+\mathrm{TN}(t)}{n},
 \qquad
@@ -88,29 +92,26 @@ t_{\text{bal}}=\arg\max_{t\in T}\operatorname{BA}(t).
 \]
 Balanced accuracy (BA) is the mean of the recall of each class, so both classes count equally whatever their size. $t_{\text{acc}}$ is used for the submitted test predictions, because the test set is graded on accuracy. $t_{\text{bal}}$ is our \emph{analysis operating point}, because missing a client in difficulty and raising a false alarm should both count. All class-specific results and local cases use $t_{\text{bal}}$.
 
-\textbf{Why thresholds instead of class weights.} Class weights (e.g.\ \texttt{class\_weight="balanced"}) counter the imbalance during training by multiplying the loss of each positive client by about 3.7 ($=0.788/0.212$). We handle the imbalance with the threshold instead, for three reasons:
-\begin{itemize}\setlength\itemsep{0pt}
-\item \emph{One mechanism for all three families.} Reweighting acts differently on each model: in LR it mainly shifts the intercept, which is almost the same as lowering the threshold, while in the tree and the EBM it also changes which splits and shapes are learned. Moving only the threshold keeps the comparison about the models themselves.
-\item \emph{Probabilities keep their meaning.} Without weights, a predicted 0.3 corresponds to roughly 30\,\% observed difficulty, and the model's base value (tree root, LR intercept, EBM intercept) reflects the real 21\,\% rate. The local explanations in Section~\ref{sec:local} therefore describe contributions to the real risk. Weighted models inflate all probabilities, so these numbers would no longer have that reading.
-\item \emph{One model, two goals.} The same fitted model serves both the accuracy-graded submission ($t_{\text{acc}}$) and the balanced analysis ($t_{\text{bal}}$); only $t$ changes, and $t$ itself is chosen by CV as the assignment requires.
-\end{itemize}
+\subsubsection{Why thresholds instead of class weights}
+Class weights (e.g.\ \texttt{class\_weight="balanced"}) counter the imbalance during training by multiplying the loss of each positive client by about 3.7 ($=0.788/0.212$). We handle the imbalance with the threshold instead, for three reasons. First, it gives one mechanism for all three families. Reweighting acts differently on each model: in LR it mainly shifts the intercept, which is almost the same as lowering the threshold, while in the tree and the EBM it also changes which splits and shapes are learned. Moving only the threshold keeps the comparison about the models themselves.
+
+Second, the probabilities keep their meaning. Without weights, a predicted 0.3 corresponds to roughly 30\,\% observed difficulty, and the model's base value (tree root, LR intercept, EBM intercept) reflects the real 21\,\% rate, so the local explanations in Section~\ref{sec:local} describe contributions to the real risk. Weighted models inflate all probabilities, and these numbers would lose that reading. Third, one fitted model serves both goals: the accuracy-graded submission ($t_{\text{acc}}$) and the balanced analysis ($t_{\text{bal}}$). Only $t$ changes, and $t$ itself is chosen by CV as the assignment requires.
 
 \subsection{The three classifiers}
-\textbf{Decision tree} (\texttt{DecisionTreeClassifier}, CART; \citealp{breiman1984classification}). Categorical predictors are one-hot encoded; numerical predictors keep their original units, because splits are invariant to monotone transformations and raw thresholds are easier to read. We searched \texttt{max\_depth} $\in\{2,\dots,8,10\}$ and \texttt{min\_samples\_leaf} $\in\{25,50,100,200,400\}$, the two parameters that directly control how many rules a reader must follow. CV AUC rises up to depth~5 and then plateaus (Figure~\ref{fig:performance}, right). The best configuration (depth~5, leaves $\geq 25$; 32 leaves; AUC 0.755) and the one-SE choice (depth~5, leaves $\geq 400$; \textbf{17 leaves}; AUC 0.752) are statistically indistinguishable, so we keep the tree with half as many leaves. Deeper trees add leaves without gaining AUC.
+\subsubsection{Decision tree}
+We use \texttt{DecisionTreeClassifier} (CART; \citealp{breiman1984classification}). Categorical predictors are one-hot encoded; numerical predictors keep their original units, because splits are invariant to monotone transformations and raw thresholds are easier to read. We searched \texttt{max\_depth} $\in\{2,\dots,8,10\}$ and \texttt{min\_samples\_leaf} $\in\{25,50,100,200,400\}$, the two parameters that directly control how many rules a reader must follow. CV AUC rises up to depth~5 and then plateaus (Figure~\ref{fig:performance}, right). The best configuration (depth~5, leaves $\geq 25$; 32 leaves; AUC 0.755) and the one-SE choice (depth~5, leaves $\geq 400$; \textbf{17 leaves}; AUC 0.752) are statistically indistinguishable, so we keep the tree with half as many leaves. Deeper trees add leaves without gaining AUC.
 
-\textbf{Logistic regression} (\texttt{LogisticRegression}, L2, \texttt{lbfgs}). Numerical predictors are standardized, so coefficients are comparable: each coefficient is the change in log-odds per standard deviation. Categorical predictors use reference (drop-first) coding, which removes the perfect collinearity of full one-hot encoding with the intercept. The four monetary variables are strongly right-skewed. Whether to apply a signed $\log(1+|x|)$ transform to them was a \emph{feature-transformation choice inside the CV grid}, crossed with $C\in\{0.001,\dots,100\}$. The transform raises CV AUC from 0.750 to 0.762 at every $C$. The one-SE rule selects $C=0.01$ (AUC 0.761), where the best $C=0.1$ gives 0.762.
+\subsubsection{Logistic regression}
+We use \texttt{LogisticRegression} with an L2 penalty and the \texttt{lbfgs} solver. Numerical predictors are standardized, so coefficients are comparable: each coefficient is the change in log-odds per standard deviation. Categorical predictors use reference (drop-first) coding, which removes the perfect collinearity of full one-hot encoding with the intercept. The four monetary variables are strongly right-skewed. Whether to apply a signed $\log(1+|x|)$ transform to them was a \emph{feature-transformation choice inside the CV grid}, crossed with $C\in\{0.001,\dots,100\}$. The transform raises CV AUC from 0.750 to 0.762 at every $C$. The one-SE rule selects $C=0.01$ (AUC 0.761), where the best $C=0.1$ gives 0.762.
 
-\textbf{EBM} (\texttt{ExplainableBoostingClassifier}, InterpretML; \citealp{lou2012intelligible,nori2019interpretml}), with \texttt{interactions=0} so the model is a pure generalized additive model: $\operatorname{logit} P(y=1\mid x)=\beta_0+\sum_j f_j(x_j)$. Unlike the other two models, the EBM receives the raw columns. It bins numerical variables itself and treats the string columns as nominal, so each original variable gets exactly one shape function~$f_j$. We searched \texttt{max\_bins} $\in\{32,256,1024\}$ (shape resolution) and \texttt{min\_samples\_leaf} $\in\{4,50\}$ (smoothness). CV AUC varied only between 0.7746 and 0.7757, so the EBM is robust to these settings. We selected 256 bins and leaves of at least 50 samples.
+\subsubsection{Explainable Boosting Machine}
+We use InterpretML's \texttt{ExplainableBoostingClassifier} \citep{lou2012intelligible,nori2019interpretml} with \texttt{interactions=0}, so the model is a pure generalized additive model: $\operatorname{logit} P(y=1\mid x)=\beta_0+\sum_j f_j(x_j)$. Unlike the other two models, the EBM receives the raw columns. It bins numerical variables itself and treats the string columns as nominal, so each original variable gets exactly one shape function~$f_j$. We searched \texttt{max\_bins} $\in\{32,256,1024\}$ (shape resolution) and \texttt{min\_samples\_leaf} $\in\{4,50\}$ (smoothness). CV AUC varied only between 0.7746 and 0.7757, so the EBM is robust to these settings. We selected 256 bins and leaves of at least 50 samples.
 
-\textbf{Reference models.} A majority-class classifier gives the chance level. An untuned \texttt{HistGradient\allowbreak BoostingClassifier} serves as a black-box reference that measures what interpretability costs. Neither replaces the mandatory models.
+\subsubsection{Reference models}
+A majority-class classifier gives the chance level. An untuned \texttt{HistGradient\allowbreak BoostingClassifier} serves as a black-box reference that measures what interpretability costs. Neither replaces the mandatory models.
 
 \subsection{Interpretation}
-Each model is interpreted with its own explanations, through InterpretML's global and local views \citep{nori2019interpretml}:
-\begin{itemize}\setlength\itemsep{0pt}
-\item \textbf{Decision tree}: the tree structure, the rules extracted from its leaves and the impurity importance of each variable. A single prediction is explained by the decision path the client follows to its leaf.
-\item \textbf{Logistic regression}: the standardized coefficients. A single prediction is explained by each variable's contribution, coefficient $\times$ standardized value.
-\item \textbf{EBM}: the shape function and the importance (mean absolute contribution) of each variable. A single prediction is explained by the value of each shape function for that client.
-\end{itemize}
+Each model is interpreted with its own explanations, through InterpretML's global and local views \citep{nori2019interpretml}. The decision tree is read through its structure, the rules extracted from its leaves and the impurity importance of each variable; a single prediction is explained by the decision path the client follows to its leaf. Logistic regression is read through its standardized coefficients; a single prediction is explained by each variable's contribution, coefficient $\times$ standardized value. The EBM is read through the shape function and the importance (mean absolute contribution) of each variable; a single prediction is explained by the value of each shape function for that client.
 To compare \emph{which variables matter} for each model, we put the three importance measures side by side. Their units differ, so we divide each model's importances by their total: each value becomes the variable's share of that model's importance, and the rankings can be compared directly. For local explanations, we use the same four validation clients for all three models, with at least one from each class (Section~\ref{sec:local}).
 
 % ---------------------------------------------------------------------------
@@ -137,9 +138,10 @@ Classifier and key settings & AUC & Accuracy & Bal.\ acc. & Recall$_1$ \\
 \end{tabular}
 \end{table}
 
-\textbf{All three models clearly beat chance}: they exceed the majority-class accuracy of 0.788 and have balanced accuracy near 0.70 against the chance level of 0.50. The ranking EBM $>$ LR $>$ tree is the same for every metric. Because the folds are shared, we can confirm it fold by fold. The EBM's AUC exceeds LR's by $+0.014\pm0.004$ and the tree's by $+0.023\pm0.007$, in 5/5 folds each, and LR beats the tree in 5/5 folds. The black-box reference is \emph{worse} than the EBM in all five folds ($-0.007$).
+All three models clearly beat chance: they exceed the majority-class accuracy of 0.788 and have balanced accuracy near 0.70 against the chance level of 0.50. The ranking EBM $>$ LR $>$ tree is the same for every metric. Because the folds are shared, we can confirm it fold by fold. The EBM's AUC exceeds LR's by $+0.014\pm0.004$ and the tree's by $+0.023\pm0.007$, in 5/5 folds each, and LR beats the tree in 5/5 folds. The black-box reference is \emph{worse} than the EBM in all five folds ($-0.007$).
 
-\textbf{Thresholds behave as theory predicts for calibrated models.} $t_{\text{acc}}$ lies near 0.5 (0.47--0.49). $t_{\text{bal}}$ lies near the positive rate (0.18--0.23), because for a calibrated model balanced accuracy is maximized by flagging clients whose risk exceeds the base rate. At $t_{\text{acc}}$ the models flag only about 10\,\% of clients and detect about 30\,\% of difficulties; at $t_{\text{bal}}$ they flag about 30\,\% and detect about 62\,\%.
+\subsection{Behaviour of the thresholds}
+The thresholds behave as theory predicts for calibrated models. $t_{\text{acc}}$ lies near 0.5 (0.47--0.49). $t_{\text{bal}}$ lies near the positive rate (0.18--0.23), because for a calibrated model balanced accuracy is maximized by flagging clients whose risk exceeds the base rate. At $t_{\text{acc}}$ the models flag only about 10\,\% of clients and detect about 30\,\% of difficulties; at $t_{\text{bal}}$ they flag about 30\,\% and detect about 62\,\%.
 
 \begin{figure}[ht]
 \centering
@@ -148,7 +150,8 @@ Classifier and key settings & AUC & Accuracy & Bal.\ acc. & Recall$_1$ \\
 \label{fig:performance}
 \end{figure}
 
-\textbf{Confirmation on the validation set.} On the untouched 5{,}000 validation clients, with all settings fixed, the results match CV (Table~\ref{tab:holdout}). The EBM again leads in AUC, accuracy and balanced accuracy, and every value on the validation set lies within about one fold standard deviation of its CV estimate. The optimism from choosing thresholds on out-of-fold data is therefore negligible.
+\subsection{Confirmation on the validation set}
+On the untouched 5{,}000 validation clients, with all settings fixed, the results match CV (Table~\ref{tab:holdout}). The EBM again leads in AUC, accuracy and balanced accuracy, and every value on the validation set lies within about one fold standard deviation of its CV estimate. The optimism from choosing thresholds on out-of-fold data is therefore negligible.
 
 \begin{table}[ht]
 \centering
@@ -169,7 +172,8 @@ Majority baseline & .500 & .788 & .500 & .000 / 1.000 & 0\,\% \\
 \end{tabular}
 \end{table}
 
-\textbf{Standard classification metrics.} Once a cut-off is fixed, every client is either flagged or not, and the usual metrics apply. \emph{Accuracy} is the share of all clients classified correctly. \emph{Precision} is the share of flagged clients who really have difficulty, so it is high when there are few false alarms. \emph{Recall} (sensitivity) is the share of clients in difficulty who are flagged, so it is high when few cases are missed. The \emph{F1-score} combines precision and recall in a single number, which is useful when the classes are imbalanced. Table~\ref{tab:standard} reports them at both thresholds and Figure~\ref{fig:confusion} shows the confusion matrices behind them.
+\subsection{Standard classification metrics}
+Once a cut-off is fixed, every client is either flagged or not, and the usual metrics apply. \emph{Accuracy} is the share of all clients classified correctly. \emph{Precision} is the share of flagged clients who really have difficulty, so it is high when there are few false alarms. \emph{Recall} (sensitivity) is the share of clients in difficulty who are flagged, so it is high when few cases are missed. The \emph{F1-score} combines precision and recall in a single number, which is useful when the classes are imbalanced. Table~\ref{tab:standard} reports them at both thresholds and Figure~\ref{fig:confusion} shows the confusion matrices behind them.
 
 \begin{table}[ht]
 \centering
@@ -212,7 +216,8 @@ The root split (Figure~\ref{fig:tree}) separates clients who are currently behin
 \label{fig:tree}
 \end{figure}
 
-\textbf{From tree to rule set.} At the operating threshold only the predicted class of each leaf matters, so sibling leaves that end in the same class can be merged without changing a single prediction. Collapsing such subtrees turns the 17 leaves into \textbf{9 rules, of which only 6 predict difficulty} (Table~\ref{tab:rules}). For example, the five leaves under ``behind on payments and paid at most 9.5\,\% of the bills'' all predict difficulty and merge into rule R1. The rule set reads: \emph{flag the client if any rule fires}. R1 alone covers 15\,\% of clients and captures 39\,\% of all difficulties (balanced accuracy 0.649 on the training set). Adding rules in order of risk raises balanced accuracy to 0.686 with four rules and 0.698 with all six, so a two- or three-rule version would trade a few points of recall for an explanation that fits on one line.
+\subsubsection{From tree to rule set}
+At the operating threshold only the predicted class of each leaf matters, so sibling leaves that end in the same class can be merged without changing a single prediction. Collapsing such subtrees turns the 17 leaves into \textbf{9 rules, of which only 6 predict difficulty} (Table~\ref{tab:rules}). For example, the five leaves under ``behind on payments and paid at most 9.5\,\% of the bills'' all predict difficulty and merge into rule R1. The rule set reads: \emph{flag the client if any rule fires}. R1 alone covers 15\,\% of clients and captures 39\,\% of all difficulties (balanced accuracy 0.649 on the training set). Adding rules in order of risk raises balanced accuracy to 0.686 with four rules and 0.698 with all six, so a two- or three-rule version would trade a few points of recall for an explanation that fits on one line.
 
 \begin{table}[ht]
 \centering
@@ -282,17 +287,15 @@ Figure~\ref{fig:importance} puts the three models' own importance measures side 
 \label{fig:importance}
 \end{figure}
 
-\textbf{Where they agree.} All three models put recent repayment behaviour among their most important variables: delayed months, the latest repayment status and the assistance plan are in the top five of every model. The tree and the EBM rank the variables in almost the same order (rank correlation 0.86): latest repayment status, payment-to-bill ratio, delayed months, zero-payment months and the assistance plan form the top five of both. The tree and the EBM give little or no weight to education, marital status, average bill and sex; LR gives them small but non-zero weights (education is its sixth variable, with 4.5\,\%).
+\subsubsection{Where they agree}
+All three models put recent repayment behaviour among their most important variables: delayed months, the latest repayment status and the assistance plan are in the top five of every model. The tree and the EBM rank the variables in almost the same order (rank correlation 0.86): latest repayment status, payment-to-bill ratio, delayed months, zero-payment months and the assistance plan form the top five of both. The tree and the EBM give little or no weight to education, marital status, average bill and sex; LR gives them small but non-zero weights (education is its sixth variable, with 4.5\,\%).
 
-\textbf{Where they differ.} LR puts total payment (16.6\,\% of its importance) and utilization (15.1\,\%) first and ranks the payment-to-bill ratio only tenth (3.4\,\%), whereas the ratio is the first variable of the EBM (19.0\,\%) and the second of the tree (33.6\,\%). Its rank correlation with the other two is low (0.12 with the tree, 0.38 with the EBM). This does not mean that LR ignores how much clients pay: the ratio is computed from total payment and bills, so the same information can be taken from different variables. A linear model takes it from (log) total payment, while the tree and the EBM, which can bend their effects, use the ratio directly. This is an instance of the \emph{Rashomon effect} \citep{breiman2001statistical}: when predictors carry overlapping information, several models fit the data almost equally well while relying on different variables, so a variable's importance is a property of the model, not of the data. Finally, the tree concentrates its importance (85\,\% on two variables, eight variables unused), while LR and the EBM spread it over many variables.
+\subsubsection{Where they differ}
+LR puts total payment (16.6\,\% of its importance) and utilization (15.1\,\%) first and ranks the payment-to-bill ratio only tenth (3.4\,\%), whereas the ratio is the first variable of the EBM (19.0\,\%) and the second of the tree (33.6\,\%). Its rank correlation with the other two is low (0.12 with the tree, 0.38 with the EBM). This does not mean that LR ignores how much clients pay: the ratio is computed from total payment and bills, so the same information can be taken from different variables. A linear model takes it from (log) total payment, while the tree and the EBM, which can bend their effects, use the ratio directly. This is an instance of the \emph{Rashomon effect} \citep{breiman2001statistical}: when predictors carry overlapping information, several models fit the data almost equally well while relying on different variables, so a variable's importance is a property of the model, not of the data. Finally, the tree concentrates its importance (85\,\% on two variables, eight variables unused), while LR and the EBM spread it over many variables.
 
 \subsection{Local comparison: four clients, three explanations}
 \label{sec:local}
-We selected four validation clients by fixed rules, using each model's $t_{\text{bal}}$ decision (Table~\ref{tab:local}):
-\begin{itemize}\setlength\itemsep{0pt}
-\item A and B are the most typical clients of each class on which all three models are correct (EBM probability closest to its group median).
-\item C and D are the clients of each class on which the models disagree most (largest spread between their predicted probabilities).
-\end{itemize}
+We selected four validation clients by fixed rules, using each model's $t_{\text{bal}}$ decision (Table~\ref{tab:local}). Clients A and B are the most typical clients of each class on which all three models are correct (EBM probability closest to its group median); clients C and D are the clients of each class on which the models disagree most (largest spread between their predicted probabilities).
 Each prediction is explained with the model's own local explanation. For the tree this is the decision path to the client's leaf. For LR and the EBM it is the contribution of each variable shown by InterpretML's local view (Figure~\ref{fig:local}); both models are additive, so the prediction is the intercept plus the sum of these contributions, on the log-odds scale on which both models compute.
 
 \begin{table}[ht]
@@ -321,13 +324,17 @@ D & CR26-125976 & 0 & 0 & 0 & 0.21 & 0 & 2.00 & 42 & no & .06 (0) / .39 (\textbf
 \label{fig:local}
 \end{figure}
 
-\textbf{Case A (correct, no difficulty).} The three models agree on the outcome but not fully on the reasons. The tree's path (status $\leq 0$, ratio between 0.105 and 1.2, no plan, age $\leq 24$) ends in a leaf with 11.8\,\% risk: being young is the only risk factor it notices. The EBM likewise adds $+0.56$ for the client's age of 23 and offsets it with the healthy payment ratio ($-0.42$). LR, being linear in age, adds only $+0.13$ for youth and instead credits low utilization and no delayed months. Here the two models with flexible effects agree against the linear one.
+\subsubsection{Case A: correct, no difficulty}
+The three models agree on the outcome but not fully on the reasons. The tree's path (status $\leq 0$, ratio between 0.105 and 1.2, no plan, age $\leq 24$) ends in a leaf with 11.8\,\% risk: being young is the only risk factor it notices. The EBM likewise adds $+0.56$ for the client's age of 23 and offsets it with the healthy payment ratio ($-0.42$). LR, being linear in age, adds only $+0.13$ for youth and instead credits low utilization and no delayed months. Here the two models with flexible effects agree against the linear one.
 
-\textbf{Case B (correct, difficulty).} Here the explanations agree closely. The tree's path (status $\geq 1$, ratio $\leq 0.095$, few delayed and zero-payment months, plan = yes) ends in a leaf with 50.5\,\% risk. In LR and the EBM, two months of delay (status~2) is the main driver ($+0.66$ and $+0.72$), followed by the assistance plan (about $+0.4$ in both); the EBM also counts the low payment ratio as risk. Full utilization adds $+0.66$ in LR, a variable the tree does not use. This client sits right at the boundary (probabilities 0.47--0.53), which is typical of real difficulty cases and explains why recall is limited.
+\subsubsection{Case B: correct, difficulty}
+Here the explanations agree closely. The tree's path (status $\geq 1$, ratio $\leq 0.095$, few delayed and zero-payment months, plan = yes) ends in a leaf with 50.5\,\% risk. In LR and the EBM, two months of delay (status~2) is the main driver ($+0.66$ and $+0.72$), followed by the assistance plan (about $+0.4$ in both); the EBM also counts the low payment ratio as risk. Full utilization adds $+0.66$ in LR, a variable the tree does not use. This client sits right at the boundary (probabilities 0.47--0.53), which is typical of real difficulty cases and explains why recall is limited.
 
-\textbf{Case C (conflict; the additive models are right).} This client is one month behind, has delayed four of six months, has a plan, and has a \emph{negative} average bill with a payment-to-bill ratio of 4.39. The tree's path (status $\geq 1$, ratio $> 0.095$, zero-payment months $\leq 3$, ratio $> 0.315$) leads to a low-risk leaf (15.4\,\%): for the tree a high ratio means a client who pays, so it misses the case. LR and the EBM both read the high ratio as \emph{risk} ($+0.72$ and $+0.48$) and add the four delayed months, which the tree does not use on this path. They correctly flag the client. The EBM's U-shaped ratio effect gives the right reading: a large ratio on a near-zero bill signals an irregular account, not a healthy one.
+\subsubsection{Case C: conflict, the additive models are right}
+This client is one month behind, has delayed four of six months, has a plan, and has a \emph{negative} average bill with a payment-to-bill ratio of 4.39. The tree's path (status $\geq 1$, ratio $> 0.095$, zero-payment months $\leq 3$, ratio $> 0.315$) leads to a low-risk leaf (15.4\,\%): for the tree a high ratio means a client who pays, so it misses the case. LR and the EBM both read the high ratio as \emph{risk} ($+0.72$ and $+0.48$) and add the four delayed months, which the tree does not use on this path. They correctly flag the client. The EBM's U-shaped ratio effect gives the right reading: a large ratio on a near-zero bill signals an irregular account, not a healthy one.
 
-\textbf{Case D (conflict; the tree is right).} This client is up to date on every behavioural variable but has a September bill at twice the credit limit (utilization 2.0, the clipping value). Utilization dominates both additive explanations ($+1.80$ in LR, $+1.34$ in the EBM) and produces a false alarm. The tree never splits on utilization, so it predicts a low 0.06. The EBM's large over-limit contribution is learned from only 0.7\,\% of clients; for this client the tree's indifference happens to be correct.
+\subsubsection{Case D: conflict, the tree is right}
+This client is up to date on every behavioural variable but has a September bill at twice the credit limit (utilization 2.0, the clipping value). Utilization dominates both additive explanations ($+1.80$ in LR, $+1.34$ in the EBM) and produces a false alarm. The tree never splits on utilization, so it predicts a low 0.06. The EBM's large over-limit contribution is learned from only 0.7\,\% of clients; for this client the tree's indifference happens to be correct.
 
 These conflicts are informative rather than embarrassing. They show where each model's inductive bias matters: the tree's hard thresholds, LR's linearity and the EBM's freedom in sparse regions. They also show that a local explanation is only as trustworthy as the global shape behind it.
 
@@ -337,25 +344,21 @@ On the validation set at $t_{\text{bal}}$, the observed difficulty rates are 20.
 % ---------------------------------------------------------------------------
 \section{Discussion}
 
-\textbf{Performance.} The three glass-box models are close (CV AUC 0.752--0.776), yet the ordering is consistent in every fold and on the validation set. The EBM gains most from its non-linear shapes for the payment ratio, zero-payment months and age, and LR gains about 0.012 AUC from the log transform of monetary variables, which is a manual version of the same idea. That the EBM \emph{outperforms} the untuned gradient-boosting reference supports the argument that, for tabular data with meaningful features, an interpretable model need not be less accurate \citep{rudin2019stop,caruana2015intelligible}. A tuned black box might gain a little, but the gap would have to justify losing a model whose every term can be inspected. Absolute performance is moderate (about 60\,\% of difficulties detected at a false-positive rate of about 21\,\% on the validation set), which reflects how much signal six months of behaviour contain rather than a weakness of any family.
+\subsection{Performance}
+The three glass-box models are close (CV AUC 0.752--0.776), yet the ordering is consistent in every fold and on the validation set. The EBM gains most from its non-linear shapes for the payment ratio, zero-payment months and age, and LR gains about 0.012 AUC from the log transform of monetary variables, which is a manual version of the same idea. That the EBM \emph{outperforms} the untuned gradient-boosting reference supports the argument that, for tabular data with meaningful features, an interpretable model need not be less accurate \citep{rudin2019stop,caruana2015intelligible}. A tuned black box might gain a little, but the gap would have to justify losing a model whose every term can be inspected. Absolute performance is moderate (about 60\,\% of difficulties detected at a false-positive rate of about 21\,\% on the validation set), which reflects how much signal six months of behaviour contain rather than a weakness of any family.
 
-\textbf{Interpretability.}
-\begin{itemize}\setlength\itemsep{0pt}
-\item \emph{The tree} is the most \emph{simulatable} model: six rules can be applied by hand and explained to a client. It is also the coarsest. It outputs only 17 probability levels, ignores eight variables completely, and can be wrong in confidently explainable ways (case C).
-\item \emph{LR} is compact, with one number per variable and stable signs across folds. It is the easiest model to state but the easiest to misread: its coefficients are conditional, three of them reverse the marginal sign, and linearity imposes an ordering on undocumented codes.
-\item \emph{The EBM} requires reading fifteen curves, but each curve is an honest picture of what the model does. Local explanations are exact sums of those curves, and the shapes surfaced the most domain-relevant insights of the project (the U-shaped ratio, the threshold in zero-payment months, the over-limit jump).
-\end{itemize}
+\subsection{Interpretability}
+The tree is the most \emph{simulatable} model: six rules can be applied by hand and explained to a client. It is also the coarsest: it outputs only 17 probability levels, ignores eight variables completely, and can be wrong in confidently explainable ways (case C). LR is compact, with one number per variable and stable signs across folds. It is the easiest model to state but the easiest to misread: its coefficients are conditional, three of them reverse the marginal sign, and linearity imposes an ordering on undocumented codes. The EBM requires reading fifteen curves, but each curve is an honest picture of what the model does. Its local explanations are exact sums of those curves, and its shapes surfaced the most domain-relevant insights of the project: the U-shaped ratio, the threshold in zero-payment months and the over-limit jump.
+
 In our judgement the EBM offers the best balance. The tree's rule set remains the best \emph{communication} device and works as a sanity check on the EBM.
 
-\textbf{Causality and the assistance plan.} All three models associate a repayment-assistance plan with higher risk (about $+0.4$ log-odds). Plans are assigned selectively, after the lender observes stress, so this is a marker of prior difficulty, not evidence that plans are harmful. The plan should not be used to deny support, and none of our explanations is causal.
+\subsection{Causality and the assistance plan}
+All three models associate a repayment-assistance plan with higher risk (about $+0.4$ log-odds). Plans are assigned selectively, after the lender observes stress, so this is a marker of prior difficulty, not evidence that plans are harmful. The plan should not be used to deny support, and none of our explanations is causal.
 
-\textbf{What could be improved.}
-\begin{enumerate}\setlength\itemsep{0pt}
-\item \emph{Rule list}: our 6-rule set is exact but still contains near-duplicate conditions. For example, R4 and R6 differ only in age and the plan, and R3 and R5 share their first two conditions. A dedicated rule-list learner (e.g.\ CORELS or a greedy rule list from \texttt{imodels}) could produce an ordered list with fewer, shorter rules.
-\item \emph{EBM}: allowing a few pairwise interactions (the tree suggests status~$\times$~ratio) would test whether the additive assumption costs accuracy. Our monotonization test shows that such edits should be checked with CV rather than imposed by intuition: the dip in zero-payment months looked implausible but was real. Editing could still be justified for jumps in sparse tails (very old ages, high total payments), where the bands are wide.
-\item \emph{LR}: binning or spline features for the payment ratio, repayment status and zero-payment months would let a linear model capture the shapes the EBM revealed, at the price of more coefficients.
-\item \emph{Protocol}: nested CV would remove the small optimism of selecting hyperparameters and thresholds on the same folds. The validation results suggest this optimism is negligible here.
-\end{enumerate}
+\subsection{What could be improved}
+Our 6-rule set is exact but still contains near-duplicate conditions: R4 and R6 differ only in age and the plan, and R3 and R5 share their first two conditions. A dedicated rule-list learner (e.g.\ CORELS or a greedy rule list from \texttt{imodels}) could produce an ordered list with fewer, shorter rules. For the EBM, allowing a few pairwise interactions (the tree suggests status~$\times$~ratio) would test whether the additive assumption costs accuracy. Our monotonization test shows that edits to the shape functions should be checked with CV rather than imposed by intuition, since the dip in zero-payment months looked implausible but was real; editing could still be justified for jumps in sparse tails (very old ages, high total payments), where the bands are wide.
+
+For LR, binning or spline features for the payment ratio, repayment status and zero-payment months would let a linear model capture the shapes the EBM revealed, at the price of more coefficients. Finally, nested CV would remove the small optimism of selecting hyperparameters and thresholds on the same folds, although the validation results suggest this optimism is negligible here.
 
 % ---------------------------------------------------------------------------
 \section{Conclusion}
