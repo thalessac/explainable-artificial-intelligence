@@ -104,13 +104,14 @@ Balanced accuracy (BA) is the mean of the recall of each class, so both classes 
 
 \textbf{Reference models.} A majority-class classifier gives the chance level. An untuned \texttt{HistGradient\allowbreak BoostingClassifier} serves as a black-box reference that measures what interpretability costs. Neither replaces the mandatory models.
 
-\subsection{Tools for comparing explanations}
-The native explanations of the three families --- splits, coefficients and shape functions --- are not on a common scale, so we add three comparisons that are:
-\begin{enumerate}\setlength\itemsep{0pt}
-\item \textbf{Permutation importance} \citep{breiman2001random}: the drop in validation AUC when one original variable is shuffled (10 repetitions), computed identically for every model.
-\item \textbf{Effect curves}: for each model, the variable is set to each grid value in 1{,}000 training rows and the mean log-odds is recorded and centred (a partial-dependence curve on the log-odds scale; \citealp{molnar2022interpretable}). For the additive models this recovers their exact per-variable effect.
-\item \textbf{Local log-odds decompositions}: for the EBM, the shape-function values; for LR, coefficient $\times$ standardized value (relative to an average client in the reference categories); for the tree, the change in node log-odds produced by each split on the decision path \citep{saabas2014interpreting}. All three add up to the model's log-odds, so the bars are directly comparable.
-\end{enumerate}
+\subsection{Interpretation}
+Each model is interpreted with its own explanations, through InterpretML's global and local views \citep{nori2019interpretml}:
+\begin{itemize}\setlength\itemsep{0pt}
+\item \textbf{Decision tree}: the tree structure, the rules extracted from its leaves and the impurity importance of each variable. A single prediction is explained by the decision path the client follows to its leaf.
+\item \textbf{Logistic regression}: the standardized coefficients. A single prediction is explained by each variable's contribution, coefficient $\times$ standardized value.
+\item \textbf{EBM}: the shape function and the importance (mean absolute contribution) of each variable. A single prediction is explained by the value of each shape function for that client.
+\end{itemize}
+To compare \emph{which variables matter} for each model, we put the three importance measures side by side. Their units differ, so we divide each model's importances by their total: each value becomes the variable's share of that model's importance, and the rankings can be compared directly. For local explanations, we use the same four validation clients for all three models, with at least one from each class (Section~\ref{sec:local}).
 
 % ---------------------------------------------------------------------------
 \section{Results}
@@ -167,6 +168,36 @@ Majority baseline & .500 & .788 & .500 & .000 / 1.000 & 0\,\% \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\textbf{Standard classification metrics.} Once a cut-off is fixed, every client is either flagged or not, and the usual metrics apply. \emph{Accuracy} is the share of all clients classified correctly. \emph{Precision} is the share of flagged clients who really have difficulty, so it is high when there are few false alarms. \emph{Recall} (sensitivity) is the share of clients in difficulty who are flagged, so it is high when few cases are missed. The \emph{F1-score} combines precision and recall in a single number, which is useful when the classes are imbalanced. Table~\ref{tab:standard} reports them at both thresholds and Figure~\ref{fig:confusion} shows the confusion matrices behind them.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Standard classification metrics, five-fold CV (mean over the same five folds, out-of-fold predictions), at the accuracy-maximizing threshold $t_{\text{acc}}$ and the balanced-accuracy-maximizing threshold $t_{\text{bal}}$.}
+\label{tab:standard}
+\begin{tabular}{@{}llccccc@{}}
+\toprule
+Model & Threshold & Accuracy & Precision & Recall & F1 & Bal.\ acc. \\
+\midrule
+\multirow{2}{*}{Decision tree} & $t_{\text{acc}}=0.49$ & .812 & .634 & .274 & .381 & .616 \\
+ & $t_{\text{bal}}=0.18$ & .717 & .398 & \textbf{.650} & .493 & .692 \\[0.2em]
+\multirow{2}{*}{Logistic regression} & $t_{\text{acc}}=0.47$ & .814 & .626 & \textbf{.308} & .413 & .629 \\
+ & $t_{\text{bal}}=0.22$ & .737 & .419 & .624 & .501 & .695 \\[0.2em]
+\multirow{2}{*}{EBM} & $t_{\text{acc}}=0.49$ & \textbf{.817} & \textbf{.648} & .304 & \textbf{.414} & \textbf{.630} \\
+ & $t_{\text{bal}}=0.23$ & \textbf{.753} & \textbf{.441} & .624 & \textbf{.517} & \textbf{.705} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The two thresholds give two very different models of use. At $t_{\text{acc}}$ the models flag few clients: about two out of three flagged clients really have difficulty (precision 0.63--0.65), but only about 30\,\% of all cases are found. At $t_{\text{bal}}$ they find about 62--65\,\% of the cases, at the price of more false alarms (precision 0.40--0.44). The EBM has the best F1-score at both thresholds; the tree reaches the highest recall at $t_{\text{bal}}$ only because it flags more clients, with the lowest precision. On the validation set the picture is the same (e.g.\ EBM: accuracy 0.825, precision 0.691, recall 0.320 at $t_{\text{acc}}$; F1 0.506 at $t_{\text{bal}}$).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.9\linewidth]{figures/confusion_matrices.pdf}
+\caption{Confusion matrices on the 5{,}000 validation clients at $t_{\text{acc}}$ (top) and $t_{\text{bal}}$ (bottom). Rows: actual class; columns: predicted class. Top left: true negatives; top right: false alarms; bottom left: missed cases; bottom right: detected cases.}
+\label{fig:confusion}
+\end{figure}
 
 % ---------------------------------------------------------------------------
 \section{Models: interpretation and comparison}
@@ -241,46 +272,28 @@ The bands ($\pm1$ SD over the EBM's bagged fits) are narrow wherever data are de
 \label{fig:ebm}
 \end{figure}
 
-\subsection{Global comparison: same signal, different carriers and shapes}
-\textbf{Which variables matter?} Native importances are not comparable across families, so Figure~\ref{fig:perm} measures every model the same way. The three models agree that recent repayment behaviour dominates, and that education, marital status, average bill and sex are irrelevant (permutation importance $\approx 0$). They \emph{disagree on which correlated variable carries the payment signal}:
-\begin{itemize}\setlength\itemsep{0pt}
-\item The tree routes almost everything through the payment-to-bill ratio (AUC drop 0.122) and repayment status (0.057).
-\item LR relies on total payment (0.073) and utilization (0.056) and barely uses the ratio (0.004).
-\item The EBM spreads importance across seven variables, none exceeding 0.032.
-\end{itemize}
-The rank correlations of the importances are 0.85 (tree--EBM), 0.73 (LR--EBM) and only 0.36 (tree--LR). This is an instance of the \emph{Rashomon effect} \citep{breiman2001statistical}: when several predictors carry overlapping information, many different models fit the data almost equally well, yet each relies on different variables and so tells a different story. Here the payment variables are partly redundant (the ratio is computed from total payment and bills), so each model picks its own carrier for the same signal. A variable's importance is therefore a property of the model, not of the data. The EBM's smaller drops do not mean that it uses weaker signals: when one of its many inputs is shuffled, the others partly compensate.
+\subsection{Which variables matter for each model?}
+Figure~\ref{fig:importance} puts the three models' own importance measures side by side (impurity importance for the tree, absolute standardized coefficients for LR, mean absolute contribution for the EBM), each divided by its total so that it reads as a share of that model's importance.
 
 \begin{figure}[ht]
 \centering
-\includegraphics[width=0.72\linewidth]{figures/permutation_importance.pdf}
-\caption{Permutation importance on the validation set: mean decrease in AUC over 10 shuffles of each original variable, computed identically for the three models.}
-\label{fig:perm}
+\includegraphics[width=0.72\linewidth]{figures/importance_comparison.pdf}
+\caption{Share of each model's total importance per variable: impurity importance (tree), absolute standardized coefficient summed over dummy columns (LR) and mean absolute contribution (EBM).}
+\label{fig:importance}
 \end{figure}
 
-\textbf{How do the variables act?} Figure~\ref{fig:effects} overlays the three models' effect curves for the four most important numerical variables:
-\begin{itemize}\setlength\itemsep{0pt}
-\item \textbf{Payment-to-bill ratio}: the tree and the EBM agree on the steep fall from 0 to about 0.5, but beyond 1.2 the tree is flat while the EBM rises again. LR fits a single, slightly \emph{increasing} line, which contradicts both of the other models over the range where most clients lie.
-\item \textbf{Repayment status}: all three agree on the step at code~1. LR alone extrapolates the line into the negative codes.
-\item \textbf{Delayed months}: LR is linear, the EBM is convex, and the tree is nearly flat, because its splits already use repayment status, which is correlated 0.64 with delayed months.
-\item \textbf{Zero-payment months}: the EBM's dip at 1--2 months is invisible to the other two.
-\end{itemize}
-The tree's effects are coarse step functions; LR's are straight lines by construction. The EBM shows these shapes because its additive structure lets the data choose each curve, which is also why it is the most accurate of the three.
+\textbf{Where they agree.} All three models put recent repayment behaviour among their most important variables: delayed months, the latest repayment status and the assistance plan are in the top five of every model. The tree and the EBM rank the variables in almost the same order (rank correlation 0.86): latest repayment status, payment-to-bill ratio, delayed months, zero-payment months and the assistance plan form the top five of both. The tree and the EBM give little or no weight to education, marital status, average bill and sex; LR gives them small but non-zero weights (education is its sixth variable, with 4.5\,\%).
 
-\begin{figure}[ht]
-\centering
-\includegraphics[width=\linewidth]{figures/effect_comparison.pdf}
-\caption{Same variable, three explanations: centred effect on the log-odds of difficulty (partial dependence on the log-odds scale, central 98\,\% of each variable's range).}
-\label{fig:effects}
-\end{figure}
+\textbf{Where they differ.} LR puts total payment (16.6\,\% of its importance) and utilization (15.1\,\%) first and ranks the payment-to-bill ratio only tenth (3.4\,\%), whereas the ratio is the first variable of the EBM (19.0\,\%) and the second of the tree (33.6\,\%). Its rank correlation with the other two is low (0.12 with the tree, 0.38 with the EBM). This does not mean that LR ignores how much clients pay: the ratio is computed from total payment and bills, so the same information can be taken from different variables. A linear model takes it from (log) total payment, while the tree and the EBM, which can bend their effects, use the ratio directly. This is an instance of the \emph{Rashomon effect} \citep{breiman2001statistical}: when predictors carry overlapping information, several models fit the data almost equally well while relying on different variables, so a variable's importance is a property of the model, not of the data. Finally, the tree concentrates its importance (85\,\% on two variables, eight variables unused), while LR and the EBM spread it over many variables.
 
 \subsection{Local comparison: four clients, three explanations}
 \label{sec:local}
 We selected four validation clients by fixed rules, using each model's $t_{\text{bal}}$ decision (Table~\ref{tab:local}):
 \begin{itemize}\setlength\itemsep{0pt}
 \item A and B are the most typical clients of each class on which all three models are correct (EBM probability closest to its group median).
-\item C and D are the clients of each class on which the models disagree most (largest spread of log-odds).
+\item C and D are the clients of each class on which the models disagree most (largest spread between their predicted probabilities).
 \end{itemize}
-Figure~\ref{fig:local} decomposes every prediction into log-odds contributions.
+Each prediction is explained with the model's own local explanation. For the tree this is the decision path to the client's leaf. For LR and the EBM it is the contribution of each variable shown by InterpretML's local view (Figure~\ref{fig:local}); both models are additive, so the prediction is the intercept plus the sum of these contributions, on the log-odds scale on which both models compute.
 
 \begin{table}[ht]
 \centering
@@ -304,22 +317,22 @@ D & CR26-125976 & 0 & 0 & 0 & 0.21 & 0 & 2.00 & 42 & no & .06 (0) / .39 (\textbf
 \begin{figure}[ht]
 \centering
 \includegraphics[width=\linewidth]{figures/local_comparison.pdf}
-\caption{Log-odds contributions of the six most influential variables for each local case and model. Base values: tree root $-1.31$, LR intercept $-1.63$, EBM intercept $-1.58$. Contributions plus base equal each model's log-odds.}
+\caption{Local explanations of LR and the EBM: contribution of the six most influential variables for each client (log-odds; intercepts: LR $-1.63$, EBM $-1.58$). The panel titles give the predicted probabilities of all three models.}
 \label{fig:local}
 \end{figure}
 
-\textbf{Case A (correct, no difficulty).} The three models agree on the outcome but not fully on the reasons. The tree and the EBM both charge the client for being 23 years old (about $+0.6$) and offset this with a healthy payment ratio of 0.35. LR, being linear in age, adds only $+0.13$ for youth and instead credits low utilization and no delayed months. Here two models with flexible effects agree against the linear one.
+\textbf{Case A (correct, no difficulty).} The three models agree on the outcome but not fully on the reasons. The tree's path (status $\leq 0$, ratio between 0.105 and 1.2, no plan, age $\leq 24$) ends in a leaf with 11.8\,\% risk: being young is the only risk factor it notices. The EBM likewise adds $+0.56$ for the client's age of 23 and offsets it with the healthy payment ratio ($-0.42$). LR, being linear in age, adds only $+0.13$ for youth and instead credits low utilization and no delayed months. Here the two models with flexible effects agree against the linear one.
 
-\textbf{Case B (correct, difficulty).} Here the explanations agree closely. Two months of delay (status~2) is the main driver in every model ($+0.66$ to $+1.06$), followed by the assistance plan (about $+0.4$ in all three). A low payment ratio contributes in the tree and the EBM. Full utilization adds $+0.66$ in LR, which the tree ignores. This client sits right at the boundary (probabilities 0.47--0.53), which is typical of real difficulty cases and explains why recall is limited.
+\textbf{Case B (correct, difficulty).} Here the explanations agree closely. The tree's path (status $\geq 1$, ratio $\leq 0.095$, few delayed and zero-payment months, plan = yes) ends in a leaf with 50.5\,\% risk. In LR and the EBM, two months of delay (status~2) is the main driver ($+0.66$ and $+0.72$), followed by the assistance plan (about $+0.4$ in both); the EBM also counts the low payment ratio as risk. Full utilization adds $+0.66$ in LR, a variable the tree does not use. This client sits right at the boundary (probabilities 0.47--0.53), which is typical of real difficulty cases and explains why recall is limited.
 
-\textbf{Case C (conflict; the additive models are right).} This client is one month behind, has delayed four of six months, has a plan, and has a \emph{negative} average bill with a payment-to-bill ratio of 4.39. The tree follows the branch ``status $\geq1$ and ratio $>0.095$'' and treats the high ratio as strongly protective ($-1.25$), so it predicts 0.15 and misses the case. LR and the EBM both read the high ratio as \emph{risk} ($+0.72$ and $+0.48$) and add the four delayed months, which the tree does not use on this path. They correctly flag the client. The EBM's U-shaped ratio effect gives the right reading: a large ratio on a near-zero bill signals an irregular account, not a healthy one.
+\textbf{Case C (conflict; the additive models are right).} This client is one month behind, has delayed four of six months, has a plan, and has a \emph{negative} average bill with a payment-to-bill ratio of 4.39. The tree's path (status $\geq 1$, ratio $> 0.095$, zero-payment months $\leq 3$, ratio $> 0.315$) leads to a low-risk leaf (15.4\,\%): for the tree a high ratio means a client who pays, so it misses the case. LR and the EBM both read the high ratio as \emph{risk} ($+0.72$ and $+0.48$) and add the four delayed months, which the tree does not use on this path. They correctly flag the client. The EBM's U-shaped ratio effect gives the right reading: a large ratio on a near-zero bill signals an irregular account, not a healthy one.
 
 \textbf{Case D (conflict; the tree is right).} This client is up to date on every behavioural variable but has a September bill at twice the credit limit (utilization 2.0, the clipping value). Utilization dominates both additive explanations ($+1.80$ in LR, $+1.34$ in the EBM) and produces a false alarm. The tree never splits on utilization, so it predicts a low 0.06. The EBM's large over-limit contribution is learned from only 0.7\,\% of clients; for this client the tree's indifference happens to be correct.
 
 These conflicts are informative rather than embarrassing. They show where each model's inductive bias matters: the tree's hard thresholds, LR's linearity and the EBM's freedom in sparse regions. They also show that a local explanation is only as trustworthy as the global shape behind it.
 
 \subsection{Subgroup audit by recorded sex}
-On the validation set at $t_{\text{bal}}$, the observed difficulty rates are 20.5\,\% (female, $n=3029$) and 22.3\,\% (male, $n=1971$). For all three models the gaps between groups in flag rate (at most 0.9 points), true-positive rate (1.8--2.1 points, slightly higher for women) and false-positive rate (0.2--0.8 points) are small. Sex has zero permutation importance in every model, and its EBM term is the least important of the fifteen. As the data dictionary stresses, similar error rates alone do not establish fairness; this is a descriptive check only.
+On the validation set at $t_{\text{bal}}$, the observed difficulty rates are 20.5\,\% (female, $n=3029$) and 22.3\,\% (male, $n=1971$). For all three models the gaps between groups in flag rate (at most 0.9 points), true-positive rate (1.8--2.1 points, slightly higher for women) and false-positive rate (0.2--0.8 points) are small. Sex is not used by the tree, has 2.4\,\% of LR's importance and is the least important of the EBM's fifteen terms (1.3\,\%). As the data dictionary stresses, similar error rates alone do not establish fairness; this is a descriptive check only.
 
 % ---------------------------------------------------------------------------
 \section{Discussion}
@@ -354,6 +367,6 @@ The comparison showed that interpretability does not mean a single answer. The t
 \bibliography{references}
 
 \section*{Use of generative AI}
-We used Claude (Anthropic) as an assistant to check our earlier submission against the project statement, to restructure the analysis into a single notebook and to draft and edit the text of this report. Every number, table and figure in the report is produced by the submitted notebook, which we re-ran and checked. The modelling choices, interpretations and conclusions are our own responsibility.
+We used Claude (Anthropic) as an assistant to review our analysis against the project statement, to restructure the analysis into a single notebook and to draft and edit the text of this report. Every number, table and figure in the report is produced by the submitted notebook, which we re-ran and checked. The modelling choices, interpretations and conclusions are our own responsibility.
 
 \end{document}

@@ -10,7 +10,7 @@ Explainable Boosting Machine (Phase II, final submission).
 | Report (PDF, at most 15 pages) | `report/main.pdf` (source: `report/main.tex`) |
 | Notebook with the complete analysis | `code/payment_difficulty_xai.ipynb` |
 | Completed test set (`predicted_class` appended) | `data/test.csv` |
-| Slide deck for the oral defense (PDF, 4 slides) | `presentation/presentation.pdf` (source: `presentation/presentation.tex`) |
+| Slide deck for the oral defense (PDF, 4 slides) | `presentation/defense_slides.pdf` (source: `presentation/defense_slides.pptx`) |
 
 ## Structure
 
@@ -20,7 +20,8 @@ Explainable Boosting Machine (Phase II, final submission).
   The final notebook supersedes them.
 - `data/`: training data, test data and data dictionary.
 - `report/`: LaTeX report, bibliography, assignment statement and figures.
-- `presentation/`: Beamer slide deck (the `.pptx` file is an unused template).
+- `presentation/`: the defense deck, built from the UPM template `presentation.pptx` by `build_deck.py`, with figures
+  drawn by `make_slide_figures.py`.
 
 ## Reproduce the analysis
 
@@ -30,8 +31,10 @@ Install the dependencies and run the notebook from top to bottom with `code/` as
 pip install -r code/requirements.txt
 ```
 
-The notebook reads `../data/train.csv` and `../data/test.csv`. In Google Colab it installs InterpretML and asks
-you to upload both files. A full run takes about 10-15 minutes, most of it the EBM grid search. All random
+The notebook reads `../data/train.csv` and `../data/test.csv`. In Google Colab, upload both files to the
+session's working directory (Files panel) before running; the first cell installs InterpretML. A full run takes about 10-15 minutes, most of it the EBM grid search. All random
 seeds are fixed (411).
 
-Rebuild the PDFs with `latexmk -pdf main.tex` in `report/` and `latexmk -pdf presentation.tex` in `presentation/`.
+Rebuild the report with `latexmk -pdf main.tex` in `report/`. Rebuild the deck by running
+`python make_slide_figures.py` and `python build_deck.py` in `presentation/` (requires `python-pptx`), then
+export `defense_slides.pptx` to PDF from PowerPoint.
