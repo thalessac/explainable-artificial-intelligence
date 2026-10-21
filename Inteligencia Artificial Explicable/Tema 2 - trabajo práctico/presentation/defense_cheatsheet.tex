@@ -1,0 +1,357 @@
+\documentclass[a4paper,9pt]{extarticle}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=1.4cm,top=1.2cm,bottom=1.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multicol}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{tabularx}
+\usepackage[expansion=false]{microtype}
+
+\definecolor{accent}{HTML}{1F4E9A}
+\definecolor{treecol}{HTML}{2A78D6}
+\definecolor{lrcol}{HTML}{EB6834}
+\definecolor{ebmcol}{HTML}{1BAF7A}
+\definecolor{qbg}{HTML}{F2F5FA}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0pt}{}[{\color{accent}\titlerule[0.6pt]}]
+\titlespacing*{\section}{0pt}{1.4ex}{0.2ex}
+\titleformat{\subsection}{\normalsize\bfseries}{}{0pt}{}
+\titlespacing*{\subsection}{0pt}{1.1ex}{0.3ex}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\columnsep}{0.6cm}
+\setlist{nosep,leftmargin=1.1em,topsep=1pt}
+\pagestyle{plain}
+
+\newcommand{\term}[1]{\textbf{\color{accent}#1}}
+\newcommand{\var}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\qa}[2]{\par\smallskip\colorbox{qbg}{\parbox{\dimexpr\linewidth-2\fboxsep}{\textbf{Q: #1}}}\par\nopagebreak A: #2\par}
+
+\begin{document}
+
+{\LARGE\bfseries\color{accent} Oral defense cheat sheet}\hfill{\small Explainable Classification of Payment Difficulty --- XAI, UPM, Unit 2}\par
+\vspace{0.3ex}\textcolor{accent}{\rule{\linewidth}{1pt}}
+
+\begin{multicols}{2}
+
+\section{1. The 30-second pitch}
+We predict whether a credit-card client will have \textbf{payment difficulty next month}. We trained three
+interpretable (``glass-box'') models --- a \textbf{decision tree}, \textbf{logistic regression (LR)} and an
+\textbf{Explainable Boosting Machine (EBM)} --- under \emph{one} protocol (same split, same 5 CV folds, same
+thresholds logic, same 4 local cases). The \textbf{EBM wins} (CV AUC 0.776 vs 0.761 LR vs 0.752 tree, in 5/5 folds)
+and even beats a black-box gradient-boosting model (0.768): \emph{interpretability cost nothing here}. All models
+agree that \textbf{recent repayment behaviour} drives risk, but they disagree on \emph{which} correlated variable
+carries the signal and on the \emph{shape} of the effect --- and that explains the clients where they disagree.
+We submitted the EBM.
+
+\section{2. Data and problem}
+\begin{itemize}
+\item 25{,}000 labelled + 5{,}000 unlabelled (\texttt{test.csv}) clients; 15 predictors; no missing values.
+      Based on \emph{Default of Credit Card Clients}, with a semi-synthetic target.
+\item Predictors: credit limit; sex, education, marital status, age; 8 six-month summaries (latest repayment
+      status, max delay, delayed months, average bill, bill change, total payment, payment-to-bill ratio,
+      zero-payment months); September utilization; repayment-assistance plan.
+\item \textbf{Imbalanced}: only 21.2\,\% have difficulty. Always saying ``no'' already gives
+      \textbf{78.8\,\% accuracy} $\Rightarrow$ accuracy alone is misleading.
+\item \textbf{Repayment status codes}: $\geq 1$ = months behind; $-2,-1,0$ are undocumented ``not behind'' codes
+      (the data dictionary warns not to invent an order for them).
+\end{itemize}
+
+\section{3. Basic concepts (glossary)}
+\subsection{Evaluation}
+\begin{itemize}
+\item \term{Risk score / probability} $\hat p$: model output in $[0,1]$.
+\item \term{Threshold} $t$: flag the client if $\hat p \geq t$. Turns a score into a yes/no decision.
+\item \term{Confusion matrix}: TP (difficulty caught), FN (missed), FP (false alarm), TN (correctly not flagged).
+\item \term{Accuracy} = (TP+TN)/$n$: share of all clients right.
+\item \term{Precision} = TP/(TP+FP): of the flagged clients, how many really had difficulty (few false alarms).
+\item \term{Recall / sensitivity} = TP/(TP+FN): of the clients in difficulty, how many we caught (few misses).
+      \emph{Specificity} = recall of class 0.
+\item \term{F1} = harmonic mean of precision and recall; good single number for imbalanced data.
+\item \term{Balanced accuracy (BA)} = mean of recall of class 1 and class 0. Chance = 0.5 regardless of imbalance.
+\item \term{ROC curve}: true-positive rate vs false-positive rate for \emph{every} threshold.
+\item \term{AUC}: area under ROC. = probability that a random client \emph{with} difficulty gets a higher score than
+      a random client \emph{without}. 0.5 = guessing, 1 = perfect ranking. \textbf{Threshold-free}, so we used
+      it to compare and tune models.
+\item \term{Calibration}: $\hat p = 0.3$ really means $\approx$30\,\% observed difficulty.
+\item \term{Cohen's $\kappa$}: agreement between two models corrected for agreement by chance.
+\end{itemize}
+
+\subsection{Validation}
+\begin{itemize}
+\item \term{Train/validation split}: 80/20 (20k/5k), \emph{stratified} (same 21\,\% rate in both), seed 411.
+\item \term{k-fold cross-validation (CV)}: split training data into 5 folds; train on 4, evaluate on 1, rotate.
+      Gives a mean $\pm$ std. \term{Stratified}: each fold keeps the class rate.
+\item \term{Shared folds / paired comparison}: all models use the \emph{same} 5 folds, so we compare them
+      fold by fold (``EBM wins 5/5 folds'').
+\item \term{Out-of-fold prediction}: each training client's score from the model that did \emph{not} see it.
+      Used to choose thresholds without cheating.
+\item \term{One-standard-error rule}: among settings whose CV AUC is within 1 SE of the best, take the
+      \emph{simplest}. Differences smaller than the noise are not real, so prefer the smaller model.
+\item \term{Hyperparameter}: setting chosen before training (depth, $C$, bins\ldots), tuned by CV
+      (\texttt{GridSearchCV}).
+\item \term{Data leakage}: using information you shouldn't (e.g.\ test data). Test set never used for fitting
+      or selection; validation used \emph{once} at the end.
+\end{itemize}
+
+\subsection{Modelling and interpretation}
+\begin{itemize}
+\item \term{Glass box vs black box}: a glass-box model can be read directly (rules, coefficients, curves); a
+      black box (e.g.\ gradient boosting) needs post-hoc explanation.
+\item \term{Global explanation}: how the model behaves overall (which variables matter, shape of effects).
+      \term{Local explanation}: why \emph{this} client got \emph{this} prediction.
+\item \term{Odds} = $p/(1-p)$. \term{Log-odds (logit)} = $\log$ odds. Additive models (LR, EBM) add up
+      contributions on the log-odds scale; $p = 1/(1+e^{-\text{log-odds}})$ (sigmoid).
+      \term{Odds ratio} = $e^{\beta}$.
+\item \term{Standardization}: $(x-\text{mean})/\text{SD}$, so LR coefficients are comparable (``per SD'').
+\item \term{One-hot / drop-first (reference) coding}: one 0/1 column per category; drop one category to avoid
+      perfect collinearity with the intercept.
+\item \term{Regularization (L2)}: penalizes large coefficients; in sklearn $C$ = 1/strength
+      (smaller $C$ = stronger shrinkage).
+\item \term{Collinearity}: predictors that carry the same information; coefficients become
+      \emph{conditional} and can flip sign.
+\item \term{GAM (generalized additive model)}: logit $= \beta_0 + \sum_j f_j(x_j)$, one curve per variable.
+\item \term{Impurity (Gini)}: how mixed the classes are in a node; a tree split is chosen to reduce it most.
+\item \term{Rashomon effect}: many models fit equally well while relying on different variables
+      $\Rightarrow$ importance is a property of the model, not of the data.
+\item \term{Simulatability}: a human can compute the prediction by hand (the tree's rules).
+\item \term{Causality}: all our explanations are \emph{associations}, not causes.
+\end{itemize}
+
+\section{4. How it was done (pipeline)}
+\begin{enumerate}[leftmargin=1.3em]
+\item Explore data: imbalance, skewed money variables, undocumented status codes.
+\item Split once 80/20, stratified. Define the same 5 stratified folds on the training set.
+\item For each model family, grid-search hyperparameters by \textbf{CV AUC} (preprocessing is inside the
+      pipeline, so it is learned on the training folds only); apply the one-SE rule for tree and LR.
+\item Compute out-of-fold probabilities, choose thresholds $t_{\text{acc}}$ and $t_{\text{bal}}$ on the grid
+      0.05--0.95.
+\item Add references: majority class (chance) and untuned \texttt{HistGradientBoosting} (black box).
+\item Confirm everything once on the 5{,}000 validation clients (all within $\approx$1 fold SD of CV).
+\item Interpret each model globally and locally with its own explanations (InterpretML views); compare
+      importances (normalized to shares) and 4 local clients.
+\item Subgroup audit by recorded sex (descriptive).
+\item Refit the EBM on all 25{,}000 labelled rows, predict \texttt{test.csv} at $t_{\text{acc}} = 0.49$
+      (flags 10\,\% of test clients).
+\end{enumerate}
+
+\section{5. What was considered (decisions and why)}
+\begin{itemize}
+\item \textbf{AUC as main metric}: imbalance makes accuracy misleading; AUC is threshold-free.
+\item \textbf{Two thresholds}:
+  \begin{itemize}
+  \item $t_{\text{acc}}$ (0.47--0.49, maximizes accuracy) $\to$ used for the \textbf{submission}, because the
+        test set is graded on accuracy. Flags $\approx$10\,\%, catches $\approx$30\,\% of difficulties.
+  \item $t_{\text{bal}}$ (0.18--0.23, maximizes balanced accuracy) $\to$ our \textbf{analysis point}
+        (misses and false alarms both count). Flags $\approx$30\,\%, catches $\approx$62\,\%.
+  \item $t_{\text{bal}}$ $\approx$ base rate (21\,\%): for a calibrated model, BA is maximized by flagging
+        anyone riskier than average.
+  \end{itemize}
+\item \textbf{Thresholds instead of class weights}: (1) one mechanism for all three families (weights change the
+      tree/EBM structure differently); (2) probabilities stay calibrated, so local explanations describe the real
+      21\,\% risk; (3) one fitted model serves both goals --- only $t$ changes.
+\item \textbf{One-SE rule}: in an interpretability project, prefer the smaller model if the data can't tell
+      them apart (tree: 17 leaves instead of 32; LR: $C=0.01$ instead of 0.1).
+\item \textbf{Log transform for LR} chosen \emph{inside} the CV grid (+0.012 AUC): money variables are very
+      right-skewed. Signed $\log(1+|x|)$ because bills can be negative.
+\item \textbf{Tree keeps raw units}: splits don't change under monotone transforms, raw thresholds are readable.
+\item \textbf{EBM gets raw columns}, \texttt{interactions=0}: exactly one curve per original variable (pure GAM).
+\item \textbf{Same 4 local clients} for all models, chosen by fixed rules (not cherry-picked).
+\item \textbf{Black-box reference} to measure the ``price'' of interpretability.
+\item \textbf{Fairness}: descriptive check by sex; \textbf{causality}: assistance plan is a marker, not a cause.
+\end{itemize}
+
+\section{6. Results at a glance}
+{\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+5-fold CV & AUC & Acc [$t_{acc}$] & BA [$t_{bal}$] & F1 [$t_{bal}$] \\
+\midrule
+\textcolor{treecol}{Tree} (17 leaves) & .752 & .812 & .692 & .493 \\
+\textcolor{lrcol}{LR} ($C$=0.01, log) & .761 & .814 & .695 & .501 \\
+\textcolor{ebmcol}{\textbf{EBM}} & \textbf{.776} & \textbf{.817} & \textbf{.705} & \textbf{.517} \\
+Majority class & .500 & .788 & .500 & --- \\
+Black box (HGB) & .768 & .815 & .701 & --- \\
+\bottomrule
+\end{tabular}}
+
+\begin{itemize}
+\item EBM $-$ LR = $+0.014$, EBM $-$ tree = $+0.023$ AUC, each in 5/5 folds; LR beats tree 5/5.
+\item Validation (5k): AUC tree .749, LR .766, EBM .775. Matches CV.
+\item Models make the \textbf{same decision for 87\,\%} of validation clients ($\kappa$ 0.76--0.82).
+\item Thresholds: tree .49/.18, LR .47/.22, EBM .49/.23 ($t_{\text{acc}}/t_{\text{bal}}$).
+\end{itemize}
+
+\section{7. Decision tree (CART)}
+\textbf{How it works}: repeatedly splits clients with yes/no questions (``status $\leq$ 0.5?'') choosing the split
+that most reduces impurity; a leaf's risk = share of difficulty among its training clients.
+
+\textbf{Setup}: \texttt{max\_depth} 2--10, \texttt{min\_samples\_leaf} 25--400. AUC plateaus at depth 5. Best:
+depth 5, leaf $\geq$25, 32 leaves, AUC .755. One-SE: depth 5, leaf $\geq$400, \textbf{17 leaves}, AUC .752.
+
+\subsection{How to read the tree figure}
+Each box: \textbf{question} (yes $\to$ left/True, no $\to$ right/False); \textbf{samples} = \% of training
+clients reaching the node; \textbf{value} = [share no difficulty, share difficulty] (2nd number = risk);
+\textbf{class} = majority (yes only if risk $>$ 0.5); colour orange = no, blue = yes, darker = purer;
+grey (\ldots) = truncated branches. \texttt{status <= 0.5} means status $\leq 0$ (not behind).
+\texttt{plan = no <= 0.5} true means the client \emph{has} a plan.
+\emph{Root}: 100\,\%, [0.788, 0.212] = base rate. Behind on payments (status $\geq$1): 22.8\,\% of clients,
+43.8\,\% risk. Then ratio $\leq$ 0.095: 15.3\,\%, risk 0.538 $\to$ rule R1.
+\textbf{Caution}: the figure's ``class'' uses 0.5, but we decide at $t_{\text{bal}}=0.18$, so leaves with risk
+0.26--0.43 are also flagged.
+
+\subsection{Global interpretation: 6 rules}
+Merging sibling leaves with the same class: 17 leaves $\to$ 9 rules, \textbf{6 predict difficulty}
+(``flag if any rule fires''):
+\begin{itemize}
+\item \textbf{R1} status $\geq$1 \& ratio $\leq$0.095: risk .54, 15.3\,\% of clients, 39\,\% of all difficulties.
+\item \textbf{R2} status $\leq$0 \& ratio $\leq$0.025: .43.
+\item \textbf{R3} status $\geq$1, ratio $>$0.095, zero-pay months $\geq$4: .33.
+\item \textbf{R4} status $\leq$0, ratio 0.025--0.105, age $\leq$24: .32.
+\item \textbf{R5} status $\geq$1, ratio 0.095--0.315, zero-pay $\leq$3: .28.
+\item \textbf{R6} as R4 but age $\geq$25 and plan = yes: .26.
+\end{itemize}
+Uses only 7 of 15 variables; status + ratio = 85\,\% of importance (impurity importance). Ignores utilization,
+credit limit, bills, total payment, max delay, sex, education, marital status.
+
+\textbf{Local explanation} = the path to the client's leaf.
+\textbf{Pros}: simulatable, easy to communicate. \textbf{Cons}: coarse (only 17 probability levels, ROC is
+piecewise linear), hard thresholds, lowest AUC.
+
+\section{8. Logistic regression}
+\textbf{How it works}: log-odds $= \beta_0 + \sum_j \beta_j x_j$; probability via sigmoid. Linear (straight
+line) in each variable on the log-odds scale.
+
+\textbf{Setup}: L2, \texttt{lbfgs}; numeric variables standardized; categorical drop-first (references: female,
+graduate school, married, no plan); signed log of 4 money variables; $C \in \{0.001..100\}$; one-SE $\to C=0.01$
+(AUC .761).
+
+\textbf{Global}: coefficient = change in log-odds per 1 SD (or vs reference category). Largest: total payment
+$-0.51$; utilization $+0.46$; plan $+0.44$ (odds ratio 1.55); delayed months $+0.38$; latest status $+0.37$.
+Coefficients stable across the 5 folds.
+
+\textbf{Caution --- conditional coefficients} (collinearity), sign opposite to the marginal correlation:
+\begin{itemize}
+\item max delay: corr $+0.27$, coef $-0.08$ (corr 0.83 with delayed months).
+\item credit limit: corr $-0.12$, coef $+0.11$ (given utilization and bills).
+\item payment ratio: corr $-0.14$, coef $+0.10$ (given total payment).
+\end{itemize}
+Read: ``holding the others fixed'', not ``the effect of''.
+\textbf{Linearity}: forces status codes $-2,-1,0$ onto a line; cannot represent U-shapes.
+
+\textbf{Local explanation}: contribution = coefficient $\times$ standardized value; intercept + sum =
+log-odds (intercept $-1.63$).
+
+\section{9. EBM (Explainable Boosting Machine)}
+\textbf{How it works}: a GAM, logit $= \beta_0 + \sum_j f_j(x_j)$, learned by \emph{boosting}: many rounds,
+each fitting a tiny tree on \emph{one} variable at a time (round-robin) with a small learning rate. The trees of
+each variable are summed into its \textbf{shape function} $f_j$ (a step curve). Several bagged fits give the
+uncertainty bands. Accuracy close to boosting, but each variable's effect is one curve you can plot.
+
+\textbf{Setup}: InterpretML, \texttt{interactions=0}, raw columns (bins numeric variables itself, categories as
+nominal). Grid \texttt{max\_bins} \{32,256,1024\}, \texttt{min\_samples\_leaf} \{4,50\}: AUC only .7746--.7757
+(robust). Chose 256 bins, leaf 50.
+
+\textbf{Global (shape functions; log-odds, centred at 0)}:
+\begin{itemize}
+\item \textbf{Payment ratio, U-shaped} (most important): paying $\approx$0 $\to$ up to $+0.7$; lowest risk at
+      0.5--1.2; above 1.7 back to $+0.4$ (catch-up payments, tiny/negative bills; 2\,\% of clients).
+\item \textbf{Repayment status}: flat over $-2,-1,0$; rises in steps from 1 (no invented order).
+\item \textbf{Zero-payment months}: 1--2 \emph{protective}, 3+ harmful, $+0.84$ at 6. Tested with
+      \texttt{monotonize} inside CV: AUC drops .7756 $\to$ .7728 $\Rightarrow$ the dip is real.
+\item \textbf{Age, U-shaped}: $<$25 $+0.58$, $>$57 $\approx+0.4$; 30--55 slightly protective.
+\item \textbf{Utilization}: rises to 1.0, jumps above $\approx$1.4 (over-limit, 49\,\% rate).
+\item \textbf{Assistance plan} $+0.41$ (no plan $-0.11$).
+\end{itemize}
+Bands narrow where data are dense, wide in sparse tails $\to$ read jumps there with caution.
+\textbf{Importance} = mean absolute contribution.
+\textbf{Local explanation}: value of each $f_j$ for the client; intercept ($-1.58$) + sum = exact log-odds.
+
+\section{10. Global comparison}
+Importances normalized to shares of each model's total (units differ).
+\begin{itemize}
+\item \textbf{Agree}: recent repayment behaviour (delayed months, latest status, plan in every top 5).
+      Tree and EBM almost same ranking (rank corr 0.86).
+\item \textbf{Differ}: LR puts total payment (16.6\,\%) and utilization (15.1\,\%) first, ratio only 10th
+      (3.4\,\%); ratio is 1st for EBM (19\,\%), 2nd for tree (33.6\,\%). Same information (ratio = payment/bill),
+      different carrier: a linear model takes it from log total payment; flexible models use the ratio
+      $\Rightarrow$ \textbf{Rashomon effect}.
+\item Tree concentrates (85\,\% on 2 variables); LR and EBM spread importance.
+\end{itemize}
+
+\section{11. Local cases (validation, decision at $t_{\text{bal}}$)}
+Chosen by fixed rules: A, B = most typical correct client of each class; C, D = largest disagreement.
+\begin{itemize}
+\item \textbf{A} (no difficulty, all right; .12/.13/.10): age 23 is the only risk; EBM $+0.56$ for age vs
+      LR only $+0.13$ (linear in age).
+\item \textbf{B} (difficulty, all right; .51/.47/.53): status 2 is the main driver ($+0.66$ LR, $+0.72$ EBM) +
+      plan $\approx+0.4$. Sits on the boundary $\to$ why recall is limited.
+\item \textbf{C} (difficulty; tree .15 \emph{missed}, LR .50, EBM .55 flagged): negative bill, ratio 4.39.
+      Tree reads high ratio as ``pays well''; EBM's U-shape reads it as irregular account ($+0.48$) + 4 delayed
+      months. \emph{Additive models right.}
+\item \textbf{D} (no difficulty; tree .06 right, LR .39 / EBM .28 \emph{false alarm}): up to date but
+      utilization 2.0 ($+1.80$ LR, $+1.34$ EBM). Tree ignores utilization. EBM's over-limit jump learned from
+      only 0.7\,\% of clients. \emph{Tree right.}
+\end{itemize}
+Lesson: conflicts reveal each model's inductive bias (hard thresholds, linearity, freedom in sparse regions);
+a local explanation is only as trustworthy as the global shape behind it.
+
+\section{12. Fairness and causality}
+\begin{itemize}
+\item Sex: observed rates 20.5\,\% (F) vs 22.3\,\% (M). Gaps in flag rate $\leq$0.9 pts, TPR 1.8--2.1 pts,
+      FPR 0.2--0.8 pts. Sex unused by tree, 2.4\,\% LR, 1.3\,\% EBM (least important). \emph{Descriptive only}:
+      similar error rates don't prove fairness.
+\item Assistance plan $\approx+0.4$ in all models: plans are given \emph{after} the lender sees stress
+      $\Rightarrow$ marker of prior difficulty, not harmful. Must not be used to deny support.
+\end{itemize}
+
+\section{13. Likely questions}
+\qa{Why not just accuracy?}{78.8\,\% is free (always ``no''). AUC measures ranking quality independent of the
+threshold; BA and F1 account for both classes.}
+\qa{Why is the EBM better than the black box?}{The data are tabular with meaningful features and mostly
+additive effects; the EBM captures the non-linear shapes. The black box was untuned, so a tuned one might gain a
+little --- but the gap would have to justify losing inspectability.}
+\qa{Why thresholds and not class weights?}{One mechanism for all models, calibrated probabilities (explanations
+in real risk), one model for both goals. In LR weights $\approx$ shifting the intercept anyway.}
+\qa{Why 17 leaves and not 32?}{One-SE rule: AUC .752 vs .755 is within noise; half the leaves.}
+\qa{Why is $t_{\text{bal}}$ so low (0.18--0.23)?}{For a calibrated model, BA is maximized by flagging clients
+above the base rate (21\,\%).}
+\qa{Why does max delay have a negative coefficient?}{Collinearity: it is 0.83-correlated with delayed months;
+the coefficient is conditional on the others. Not a protective effect.}
+\qa{How do you compute an LR local explanation?}{Coefficient $\times$ standardized value per variable; intercept
++ sum = log-odds; sigmoid gives $p$.}
+\qa{Why \texttt{interactions=0}?}{One curve per variable, fully readable. Possible improvement: test a few pairs
+(e.g.\ status $\times$ ratio) to see if additivity costs accuracy.}
+\qa{Is the zero-payment dip an artefact?}{We tested it: forcing monotonicity lowers CV AUC (.7756 $\to$ .7728),
+so we kept the learned shape.}
+\qa{Why do the models disagree on important variables?}{Rashomon effect: correlated predictors carry the same
+information; each model picks a different carrier.}
+\qa{Any data leakage?}{Test never used; all choices by CV on training; validation touched once; preprocessing
+fitted inside the CV pipeline.}
+\qa{Which model would you deploy?}{EBM for prediction and explanation; the tree's rule set as communication
+device and sanity check.}
+\qa{How good is the model in absolute terms?}{Moderate: $\approx$60\,\% of difficulties caught at
+$\approx$21\,\% false-positive rate --- limited by the signal in six months of behaviour, not by the model family.}
+\qa{How were the test predictions made?}{EBM refit on all 25k labelled rows, $t_{\text{acc}}=0.49$; flags
+10\,\%; agrees with the other two models on 96--97\,\%.}
+
+\section{14. Limitations and improvements}
+\begin{itemize}
+\item Rule set has near-duplicates (R4/R6, R3/R5) $\to$ rule-list learner (CORELS, \texttt{imodels}).
+\item EBM with selected interactions; edit shapes only in sparse tails, checked by CV.
+\item LR with bins/splines for ratio, status, zero-pay months.
+\item Nested CV to remove the small optimism of tuning + thresholds on the same folds (validation suggests it is
+      negligible).
+\item Cost-sensitive thresholds agreed with domain experts; fuller fairness analysis.
+\end{itemize}
+
+\end{multicols}
+\end{document}
